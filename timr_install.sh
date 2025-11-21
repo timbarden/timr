@@ -1,20 +1,15 @@
 #!/bin/bash
-# timr_install.sh
-# Complete macOS Timr with enhanced menu-bar display
+# Minimal Timr installer for macOS
 
-echo "Starting Timr installation (user-local, no sudo)..."
+echo "Installing Timr (user-local)..."
 
-# --- 1. Create directories in home folder ---
-mkdir -p ~/timr
-chmod 755 ~/timr
-
-# --- 2. Create log files in Shared folder (optional) ---
+# --- 1. Create directories ---
 mkdir -p ~/timr/logs
-touch ~/timr/logs/timr-log.txt
-chmod 600 ~/timr/logs/timr-log.txt
+chmod 755 ~/timr ~/timr/logs
 
-touch ~/timr/logs/timr-daily-summary.txt
-chmod 600 ~/timr/logs/timr-daily-summary.txt
+# --- 2. Create log files ---
+touch ~/timr/logs/timr-log.txt ~/timr/logs/timr-daily-summary.txt
+chmod 600 ~/timr/logs/*.txt
 
 # --- 3. Create login script ---
 cat << 'EOF' > ~/timr/timr-login.sh
@@ -58,68 +53,62 @@ rm -f /tmp/timr-last-login.txt
 EOF
 chmod +x ~/timr/timr-logout.sh
 
-# --- 5. Create weekly report script ---
-cat << 'EOF' > ~/timr/timr-weekly-report.sh
-#!/bin/bash
-echo "Timr Weekly Session Totals:"
-awk '{
-    split($1,d,"-");
-    cmd="date -jf %Y-%m-%d " $1 " +%U";
-    cmd | getline week; close(cmd);
-    total[week]+=$2
-} END{
-    for (w in total){
-        t=total[w];
-        h=int(t/3600); m=int((t%3600)/60); s=t%60;
-        printf "Week %s: %02d:%02d:%02d\n", w,h,m,s
-    }
-}' ~/timr/logs/timr-daily-summary.txt
-EOF
-chmod +x ~/timr/timr-weekly-report.sh
+# --- 5. Create sleep/wake helper scripts ---
+mkdir -p ~/Library/Scripts
 
-# --- 6. Create login launch agent ---
+cat << 'EOF' > ~/Library/Scripts/timr_sleep.sh
+#!/bin/bash
+~/timr/timr-logout.sh
+EOF
+chmod +x ~/Library/Scripts/timr_sleep.sh
+
+cat << 'EOF' > ~/Library/Scripts/timr_wake.sh
+#!/bin/bash
+~/timr/timr-login.sh
+EOF
+chmod +x ~/Library/Scripts/timr_wake.sh
+
+# --- 6. Create LaunchAgents ---
+
 mkdir -p ~/Library/LaunchAgents
+
+# Login agent
 cat << 'EOF' > ~/Library/LaunchAgents/com.timr.login.plist
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>Label</key>
-    <string>com.timr.login</string>
+    <key>Label</key><string>com.timr.login</string>
     <key>ProgramArguments</key>
     <array>
         <string>/Users/$(whoami)/timr/timr-login.sh</string>
     </array>
-    <key>RunAtLoad</key>
-    <true/>
+    <key>RunAtLoad</key><true/>
 </dict>
 </plist>
 EOF
 launchctl load ~/Library/LaunchAgents/com.timr.login.plist
 
-# --- 7. Create logout launch agent ---
-cat << 'EOF' > ~/Library/LaunchAgents/com.timr.logout.plist
+# SleepWatcher agent
+cat << 'EOF' > ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>Label</key>
-    <string>com.timr.logout</string>
+    <key>Label</key><string>com.timr.sleepwatcher</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/$(whoami)/timr/timr-logout.sh</string>
+        <string>/usr/local/sbin/sleepwatcher</string>
+        <string>-V</string>
+        <string>-s</string>
+        <string>/Users/$(whoami)/Library/Scripts/timr_sleep.sh</string>
+        <string>-w</string>
+        <string>/Users/$(whoami)/Library/Scripts/timr_wake.sh</string>
     </array>
-    <key>KeepAlive</key>
-    <false/>
+    <key>RunAtLoad</key><true/>
 </dict>
 </plist>
 EOF
-launchctl load ~/Library/LaunchAgents/com.timr.logout.plist
+launchctl load ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
 
-echo "Timr installation complete (user-local)!"
-echo "Daily totals stored in ~/timr/logs/timr-daily-summary.txt"
-echo "Weekly report available via:"
-echo "~/timr/timr-weekly-report.sh"
-echo "No sudo required, works entirely in your user account."
+echo "Timr installation complete!"
+echo "Logs: ~/timr/logs/timr-log.txt and timr-daily-summary.txt"
+echo "SleepWatcher will handle auto-logout on sleep and login on wake."
