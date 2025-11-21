@@ -47,10 +47,24 @@ wh=$((WEEK_SECONDS/3600))
 wm=$(((WEEK_SECONDS%3600)/60))
 WEEK_FMT=$(printf "%02d:%02d" "$wh" "$wm")
 
+# delete the week_fmt from a total of 35hours so it counts down
+TOTAL_WEEK_SECONDS=$((35 * 3600))
+REMAINING_WEEK_SECONDS=$((TOTAL_WEEK_SECONDS - WEEK_SECONDS))
+rwh=$((REMAINING_WEEK_SECONDS/3600))
+rwm=$(((REMAINING_WEEK_SECONDS%3600)/60))
+WEEK_REMAIN=$(printf "%02d:%02d" "$rwh" "$rwm")
+
+# calculate a day remain value based on TOTAL_WEEK_SECONDS/5
+TOTAL_DAY_SECONDS=$((7 * 3600))
+REMAINING_DAY_SECONDS=$((TOTAL_DAY_SECONDS - TODAY_SECONDS))
+rdh=$((REMAINING_DAY_SECONDS/3600))
+rdm=$(((REMAINING_DAY_SECONDS%3600)/60))
+DAY_REMAIN=$(printf "%02d:%02d" "$rdh" "$rdm")
+
 # ----------------------------
 # Menu bar output
 # ----------------------------
-echo "Day $TODAY_FMT - Week: $WEEK_FMT"
+echo "Day $DAY_REMAIN - Week $WEEK_REMAIN"
 echo "---"
 echo "This Week: $WEEK_FMT"
 echo "---"
