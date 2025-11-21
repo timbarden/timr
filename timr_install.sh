@@ -1,39 +1,39 @@
 #!/bin/bash
-# install_time_tracker_final.sh
-# Complete macOS Time Tracker with enhanced menu-bar display
+# install_timr.sh
+# Complete macOS Timr with enhanced menu-bar display
 
-echo "Starting Time Tracker installation..."
+echo "Starting Timr installation..."
 
 # --- 1. Create directories ---
-mkdir -p /usr/local/time-tracker
-chmod 755 /usr/local/time-tracker
+mkdir -p /usr/local/timr
+chmod 755 /usr/local/timr
 
 # --- 2. Create log files ---
-touch /Users/Shared/login-logout-log.txt
-chmod 666 /Users/Shared/login-logout-log.txt
+touch /Users/Shared/timr-log.txt
+chmod 666 /Users/Shared/timr-log.txt
 
-touch /Users/Shared/daily-session-summary.txt
-chmod 666 /Users/Shared/daily-session-summary.txt
+touch /Users/Shared/timr-daily-summary.txt
+chmod 666 /Users/Shared/timr-daily-summary.txt
 
 # --- 3. Create login script ---
-cat << 'EOF' > /usr/local/time-tracker/log-login.sh
+cat << 'EOF' > /usr/local/timr/timr-login.sh
 #!/bin/bash
 USERNAME=$(whoami)
 LOGIN_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-echo "$LOGIN_TIME" > /tmp/last_login_time.txt
-echo "$LOGIN_TIME LOGIN $USERNAME" >> /Users/Shared/login-logout-log.txt
+echo "$LOGIN_TIME" > /tmp/timr-last-login.txt
+echo "$LOGIN_TIME LOGIN $USERNAME" >> /Users/Shared/timr-log.txt
 EOF
-chmod +x /usr/local/time-tracker/log-login.sh
+chmod +x /usr/local/timr/timr-login.sh
 
 # --- 4. Create logout script ---
-cat << 'EOF' > /usr/local/time-tracker/log-logout.sh
+cat << 'EOF' > /usr/local/timr/timr-logout.sh
 #!/bin/bash
 USERNAME=$(whoami)
 LOGOUT_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 DATE=$(date '+%Y-%m-%d')
 
-if [ -f /tmp/last_login_time.txt ]; then
-    LOGIN_TIME=$(cat /tmp/last_login_time.txt)
+if [ -f /tmp/timr-last-login.txt ]; then
+    LOGIN_TIME=$(cat /tmp/timr-last-login.txt)
     LOGIN_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S" "$LOGIN_TIME" "+%s")
     LOGOUT_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S" "$LOGOUT_TIME" "+%s")
     DURATION=$((LOGOUT_EPOCH - LOGIN_EPOCH))
@@ -46,26 +46,26 @@ else
     DURATION_FORMATTED="UNKNOWN"
 fi
 
-echo "$LOGOUT_TIME LOGOUT $USERNAME (Session: $DURATION_FORMATTED)" >> /Users/Shared/login-logout-log.txt
+echo "$LOGOUT_TIME LOGOUT $USERNAME (Session: $DURATION_FORMATTED)" >> /Users/Shared/timr-log.txt
 
-if grep -q "^$DATE" /Users/Shared/daily-session-summary.txt; then
-    OLD_TOTAL=$(grep "^$DATE" /Users/Shared/daily-session-summary.txt | awk '{print $2}')
+if grep -q "^$DATE" /Users/Shared/timr-daily-summary.txt; then
+    OLD_TOTAL=$(grep "^$DATE" /Users/Shared/timr-daily-summary.txt | awk '{print $2}')
     NEW_TOTAL=$((OLD_TOTAL + DURATION))
     sed -i '' "/^$DATE/c\\
 $DATE $NEW_TOTAL
-" /Users/Shared/daily-session-summary.txt
+" /Users/Shared/timr-daily-summary.txt
 else
-    echo "$DATE $DURATION" >> /Users/Shared/daily-session-summary.txt
+    echo "$DATE $DURATION" >> /Users/Shared/timr-daily-summary.txt
 fi
 
-rm -f /tmp/last_login_time.txt
+rm -f /tmp/timr-last-login.txt
 EOF
-chmod +x /usr/local/time-tracker/log-logout.sh
+chmod +x /usr/local/timr/timr-logout.sh
 
 # --- 5. Create weekly report script ---
-cat << 'EOF' > /usr/local/time-tracker/weekly-report.sh
+cat << 'EOF' > /usr/local/timr/timr-weekly-report.sh
 #!/bin/bash
-echo "Weekly Session Totals:"
+echo "Timr Weekly Session Totals:"
 awk '{
     split($1,d,"-"); 
     cmd="date -jf %Y-%m-%d " $1 " +%U"; 
@@ -77,58 +77,58 @@ awk '{
         h=int(t/3600); m=int((t%3600)/60); s=t%60;
         printf "Week %s: %02d:%02d:%02d\n", w,h,m,s
     }
-}' /Users/Shared/daily-session-summary.txt
+}' /Users/Shared/timr-daily-summary.txt
 EOF
-chmod +x /usr/local/time-tracker/weekly-report.sh
+chmod +x /usr/local/timr/timr-weekly-report.sh
 
 # --- 6. Create login launch agent ---
 mkdir -p ~/Library/LaunchAgents
-cat << 'EOF' > ~/Library/LaunchAgents/com.time-tracker.login.plist
+cat << 'EOF' > ~/Library/LaunchAgents/com.timr.login.plist
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.time-tracker.login</string>
+    <string>com.timr.login</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/time-tracker/log-login.sh</string>
+        <string>/usr/local/timr/timr-login.sh</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
 </dict>
 </plist>
 EOF
-launchctl load ~/Library/LaunchAgents/com.time-tracker.login.plist
+launchctl load ~/Library/LaunchAgents/com.timr.login.plist
 
 # --- 7. Create logout launch agent ---
-cat << 'EOF' > ~/Library/LaunchAgents/com.time-tracker.logout.plist
+cat << 'EOF' > ~/Library/LaunchAgents/com.timr.logout.plist
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.time-tracker.logout</string>
+    <string>com.timr.logout</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/time-tracker/log-logout.sh</string>
+        <string>/usr/local/timr/timr-logout.sh</string>
     </array>
     <key>KeepAlive</key>
     <false/>
 </dict>
 </plist>
 EOF
-launchctl load ~/Library/LaunchAgents/com.time-tracker.logout.plist
+launchctl load ~/Library/LaunchAgents/com.timr.logout.plist
 
 # --- 8. Install enhanced xbar menu-bar plugin ---
 XBAR_PLUGIN_DIR=~/Library/Application\ Support/xbar/plugins
 mkdir -p "$XBAR_PLUGIN_DIR"
 
-cat << 'EOF' > "$XBAR_PLUGIN_DIR/mac-time-tracker.1m.sh"
+cat << 'EOF' > "$XBAR_PLUGIN_DIR/timr.1m.sh"
 #!/bin/bash
-LOG_FILE="/Users/Shared/daily-session-summary.txt"
+LOG_FILE="/Users/Shared/timr-daily-summary.txt"
 TODAY=$(date '+%Y-%m-%d')
 
 # Today's total
@@ -160,11 +160,11 @@ echo "Weekly Log: $WEEK_FORMATTED"
 echo "Refresh | refresh=true"
 EOF
 
-chmod +x "$XBAR_PLUGIN_DIR/mac-time-tracker.1m.sh"
+chmod +x "$XBAR_PLUGIN_DIR/timr.1m.sh"
 
-echo "Installation complete!"
+echo "Timr installation complete!"
 echo "1. Login/logout tracking is active."
 echo "2. Enhanced menu-bar plugin installed via xbar."
 echo "   Open xbar and refresh plugins to see daily + weekly usage."
 echo "3. Weekly report available via:"
-echo "/usr/local/time-tracker/weekly-report.sh"
+echo "/usr/local/timr/timr-weekly-report.sh"
