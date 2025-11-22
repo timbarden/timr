@@ -10,8 +10,8 @@ chmod 755 ~/Library ~/Library/Logs ~/Library/Logs/timr
 
 
 # Create log files
-touch ~/Library/Logs/timr/timr-daily.txt
-touch ~/Library/Logs/timr/timr-weekly.txt 
+touch ~/Library/Logs/timr/timr-sessions.txt
+touch ~/Library/Logs/timr/timr-times.txt
 chmod 600 ~/Library/Logs/timr/*.txt
 
 
@@ -24,8 +24,8 @@ cat << 'EOF' > ~/Library/Scripts/timr/timr-start.sh
 #!/bin/bash
 USERNAME=$(whoami)
 LOGIN_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-echo "$LOGIN_TIME" > /tmp/timr-last-login.txt
-echo "$LOGIN_TIME LOGIN $USERNAME" >> ~/Library/Logs/timr/timr-weekly.txt
+echo "$LOGIN_TIME" > /tmp/timr-last.txt
+echo "$LOGIN_TIME LOGIN $USERNAME" >> ~/Library/Logs/timr/timr-sessions.txt
 EOF
 chmod +x ~/Library/Scripts/timr/timr-start.sh
 
@@ -37,8 +37,8 @@ USERNAME=$(whoami)
 LOGOUT_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 DATE=$(date '+%Y-%m-%d')
 
-if [ -f /tmp/timr-last-login.txt ]; then
-    LOGIN_TIME=$(cat /tmp/timr-last-login.txt)
+if [ -f /tmp/timr-last.txt ]; then
+    LOGIN_TIME=$(cat /tmp/timr-last.txt)
     LOGIN_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S" "$LOGIN_TIME" "+%s")
     LOGOUT_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S" "$LOGOUT_TIME" "+%s")
     DURATION=$((LOGOUT_EPOCH - LOGIN_EPOCH))
@@ -46,19 +46,19 @@ else
     DURATION=0
 fi
 
-echo "$LOGOUT_TIME LOGOUT $USERNAME (Session: $DURATION seconds)" >> ~/Library/Logs/timr/timr-log.txt
+echo "$LOGOUT_TIME LOGOUT $USERNAME (Session: $DURATION seconds)" >> ~/Library/Logs/timr/timr-sessions.txt
 
-if grep -q "^$DATE" ~/Library/Logs/timr/timr-daily.txt; then
-    OLD_TOTAL=$(grep "^$DATE" ~/Library/Logs/timr/timr-daily.txt | awk '{print $2}')
+if grep -q "^$DATE" ~/Library/Logs/timr/timr-times.txt; then
+    OLD_TOTAL=$(grep "^$DATE" ~/Library/Logs/timr/timr-times.txt | awk '{print $2}')
     NEW_TOTAL=$((OLD_TOTAL + DURATION))
     sed -i '' "/^$DATE/c\\
 $DATE $NEW_TOTAL
-" ~/Library/Logs/timr/timr-daily.txt
+" ~/Library/Logs/timr/timr-times.txt
 else
-    echo "$DATE $DURATION" >> ~/Library/Logs/timr/timr-daily.txt
+    echo "$DATE $DURATION" >> ~/Library/Logs/timr/timr-times.txt
 fi
 
-rm -f /tmp/timr-last-login.txt
+rm -f /tmp/timr-last.txt
 EOF
 chmod +x ~/Library/Scripts/timr/timr-stop.sh
 
@@ -126,20 +126,20 @@ cat << 'EOF' > ~/Library/Application\ Support/xbar/plugins/timr.30s.sh
 # Timr xbar plugin
 # Shows day and weekly times
 
-DAILY_LOG_FILE="$HOME/Library/Logs/timr/timr-daily.txt"
-WEEKLY_LOG_FILE="$HOME/Library/Logs/timr/timr-weekly.txt"
-TEMP_LOG_FILE="/tmp/timr-last-login.txt"
+LOGGED_TIMES="$HOME/Library/Logs/timr/timr-times.txt"
+SESSION_LOGS="$HOME/Library/Logs/timr/timr-sessions.txt"
+TEMP_FILE="/tmp/timr-last.txt"
 TODAY=$(date "+%Y-%m-%d")
 
 # Today's total
 TODAY_SECONDS=0
-if grep -q "^$TODAY" "$DAILY_LOG_FILE" 2>/dev/null; then
-    TODAY_SECONDS=$(grep "^$TODAY" "$DAILY_LOG_FILE" | awk '{print $2}')
+if grep -q "^$TODAY" "$LOGGED_TIMES" 2>/dev/null; then
+    TODAY_SECONDS=$(grep "^$TODAY" "$LOGGED_TIMES" | awk '{print $2}')
 fi
 
 # Add current session
-if [ -f "$TEMP_LOG_FILE" ]; then
-    LOGIN_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S" "$(cat $TEMP_LOG_FILE)" "+%s")
+if [ -f "$TEMP_FILE" ]; then
+    LOGIN_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S" "$(cat $TEMP_FILE)" "+%s")
     NOW_EPOCH=$(date "+%s")
     TODAY_SECONDS=$((TODAY_SECONDS + NOW_EPOCH - LOGIN_EPOCH))
 fi
@@ -159,12 +159,12 @@ WEEK_SECONDS=$(awk -v week="$WEEK" '
     if (w == week) total+=$2;
 }
 END { print total }
-' "$DAILY_LOG_FILE" 2>/dev/null)
+' "$LOGGED_TIMES" 2>/dev/null)
 
 [ -z "$WEEK_SECONDS" ] && WEEK_SECONDS=0
 
 # Add current session to week
-if [ -f "$TEMP_LOG_FILE" ]; then
+if [ -f "$TEMP_FILE" ]; then
     WEEK_SECONDS=$((WEEK_SECONDS + NOW_EPOCH - LOGIN_EPOCH))
 fi
 
@@ -219,8 +219,8 @@ echo "$DAY_OUTPUT"
 echo "$WEEK_OUTPUT"
 echo "---"
 echo "Logs"
-echo "--Daily Log | bash='open' param1='"$DAILY_LOG_FILE"' terminal=false"
-echo "--Weekly Log | bash='open' param1='"$WEEKLY_LOG_FILE"' terminal=false"
+echo "--Session Logs | bash='open' param1='"$SESSION_LOGS"' terminal=false"
+echo "--Logged Times | bash='open' param1='"$LOGGED_TIMES"' terminal=false"
 echo "---"
 echo "Refresh | refresh=true"
 EOF
