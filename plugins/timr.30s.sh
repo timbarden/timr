@@ -4,6 +4,7 @@
 
 DAILY_FILE="$HOME/timr/logs/timr-daily-summary.txt"
 LOGIN_FILE="/tmp/timr-last-login.txt"
+FULL_LOG_FILE="$HOME/timr/logs/timr-log.txt"
 TODAY=$(date "+%Y-%m-%d")
 
 # Today's total
@@ -56,6 +57,10 @@ REMAINING_WEEK_SECONDS=$((TOTAL_WEEK_SECONDS - WEEK_SECONDS))
 rwh=$((REMAINING_WEEK_SECONDS/3600))
 rwm=$(((REMAINING_WEEK_SECONDS%3600)/60))
 WEEK_REMAIN=$(printf "%02d:%02d" "$rwh" "$rwm")
+WEEK_OUTPUT="Week remaining: $WEEK_REMAIN"
+if [ $REMAINING_WEEK_SECONDS -lt 0 ]; then
+    WEEK_OUTPUT="Week completed! Overtime: $WEEK_REMAIN"
+fi
 
 # calculate a day remain value based on TOTAL_WEEK_SECONDS/5
 TOTAL_DAY_SECONDS=$((TOTAL_WEEK_SECONDS/DAYS))
@@ -63,6 +68,10 @@ REMAINING_DAY_SECONDS=$((TOTAL_DAY_SECONDS - TODAY_SECONDS))
 rdh=$((REMAINING_DAY_SECONDS/3600))
 rdm=$(((REMAINING_DAY_SECONDS%3600)/60))
 DAY_REMAIN=$(printf "%02d:%02d" "$rdh" "$rdm")
+DAY_OUTPUT="Day remaining: $DAY_REMAIN"
+if [ $REMAINING_DAY_SECONDS -lt 0 ]; then
+    DAY_OUTPUT="Day completed!"
+fi
 
 # calculate number of days completed this week based on REMAINING_WEEK_SECONDS and TOTAL_WEEK_SECONDS
 DAYS_COMPLETED=$(( (TOTAL_WEEK_SECONDS - REMAINING_WEEK_SECONDS) / TOTAL_DAY_SECONDS ))
@@ -82,11 +91,11 @@ done
 # ----------------------------
 echo "$DAYS_COMPLETED_OUTPUT | size=10"
 echo "---"
-echo "Day remaining: $DAY_REMAIN"
-echo "Week remaining: $WEEK_REMAIN"
+echo "$DAY_OUTPUT"
+echo "$WEEK_OUTPUT"
 echo "---"
 echo "Open Logs"
-echo "--Daily Summary | bash=\"$DAILY_FILE\" terminal=false"
-echo "--Full Log | bash=\"$HOME/timr/logs/timr-log.txt\" terminal=false"
+echo "--Daily Summary | bash='open' param1='"$DAILY_FILE"' terminal=false"
+echo "--Full Log | bash='open' param1='"$FULL_LOG_FILE"' terminal=false"
 echo "---"
 echo "Refresh | refresh=true"
