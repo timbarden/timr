@@ -47,26 +47,43 @@ wh=$((WEEK_SECONDS/3600))
 wm=$(((WEEK_SECONDS%3600)/60))
 WEEK_FMT=$(printf "%02d:%02d" "$wh" "$wm")
 
-# delete the week_fmt from a total of 35hours so it counts down
-TOTAL_WEEK_SECONDS=$((35 * 3600))
+DAYS=5
+HOURS=35
+
+# delete the week_fmt from the total hours so it counts down
+TOTAL_WEEK_SECONDS=$((HOURS * 3600))
 REMAINING_WEEK_SECONDS=$((TOTAL_WEEK_SECONDS - WEEK_SECONDS))
 rwh=$((REMAINING_WEEK_SECONDS/3600))
 rwm=$(((REMAINING_WEEK_SECONDS%3600)/60))
 WEEK_REMAIN=$(printf "%02d:%02d" "$rwh" "$rwm")
 
 # calculate a day remain value based on TOTAL_WEEK_SECONDS/5
-TOTAL_DAY_SECONDS=$((7 * 3600))
+TOTAL_DAY_SECONDS=$((TOTAL_WEEK_SECONDS/DAYS))
 REMAINING_DAY_SECONDS=$((TOTAL_DAY_SECONDS - TODAY_SECONDS))
 rdh=$((REMAINING_DAY_SECONDS/3600))
 rdm=$(((REMAINING_DAY_SECONDS%3600)/60))
 DAY_REMAIN=$(printf "%02d:%02d" "$rdh" "$rdm")
 
+# calculate number of days completed this week based on REMAINING_WEEK_SECONDS and TOTAL_WEEK_SECONDS
+DAYS_COMPLETED=$(( (TOTAL_WEEK_SECONDS - REMAINING_WEEK_SECONDS) / TOTAL_DAY_SECONDS ))
+
+# for each day in DAYS, print a filled circle if day is completed, else empty circle
+DAYS_COMPLETED_OUTPUT=""
+for (( i=1; i<=DAYS; i++ )); do
+    if [ $i -le $DAYS_COMPLETED ]; then
+        DAYS_COMPLETED_OUTPUT+="●"
+    else
+        DAYS_COMPLETED_OUTPUT+="○"
+    fi
+done
+
 # ----------------------------
 # Menu bar output
 # ----------------------------
-echo "Day $DAY_REMAIN - Week $WEEK_REMAIN"
+echo "$DAYS_COMPLETED_OUTPUT | size=10"
 echo "---"
-echo "This Week: $WEEK_FMT"
+echo "Day remaining: $DAY_REMAIN"
+echo "Week remaining: $WEEK_REMAIN"
 echo "---"
 echo "Open Logs"
 echo "--Daily Summary | bash=\"$DAILY_FILE\" terminal=false"
