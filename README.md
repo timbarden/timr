@@ -2,16 +2,26 @@
 
 A lightweight time tracking system for macOS that automatically logs work hours and displays progress in the menu bar.
 
+## Dependencies
+
+Timr requires these dependencies that will request installation during setup:
+- **xbar** - For menu bar display
+- **sleepwatcher** - For sleep/wake tracking
+
 ## Installation
 
-1. Install [xbar](https://xbarapp.com/) if you haven't already
-2. Run the install script:
+Run the install script - it will check for any missing dependencies:
 
 ```bash
 ./timr_install.sh
 ```
 
-3. Restart your Mac or log out and back in
+The installer will:
+1. Check for required dependencies (xbar, sleepwatcher)
+2. Offer to install them automatically via Homebrew if missing
+3. Install the menu bar plugin
+
+After installation, restart your Mac or log out
 
 ## What it does
 
