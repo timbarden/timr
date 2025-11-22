@@ -4,6 +4,20 @@
 echo "Installing Timr..."
 
 
+# Check for xbar requirement
+if [ ! -d "/Applications/xbar.app" ] && [ ! -d "~/Applications/xbar.app" ]; then
+    echo ""
+    echo "⚠️  Timr require xbar"
+    echo ""
+    echo "1. Visit: https://xbarapp.com/"
+    echo "2. Download and install xbar"
+    echo "3. Run xbar once to set it up"
+    echo "4. Then run this installer again"
+    echo ""
+    exit 1
+fi
+
+
 # Create directories
 mkdir -p ~/Library/Logs/timr
 chmod 755 ~/Library ~/Library/Logs ~/Library/Logs/timr
