@@ -109,9 +109,12 @@ cat << 'EOF' > ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
         <key>ProgramArguments</key>
         <array>
             <string>/opt/homebrew/opt/sleepwatcher/sbin/sleepwatcher</string>
+            <!-- Verbose mode flag (shows detailed logging of sleepwatcher activity) -->
             <string>-V</string>
+            <!-- Sleep flag, followed by the script to run when the system goes to sleep -->
             <string>-s</string>
             <string>/Users/$(whoami)/Library/Scripts/timr/timr-stop.sh</string>
+            <!-- Wake flag, followed by the script to run when the system wakes up -->
             <string>-w</string>
             <string>/Users/$(whoami)/Library/Scripts/timr/timr-start.sh</string>
         </array>
