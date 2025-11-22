@@ -3,13 +3,15 @@
 
 echo "Installing Timr..."
 
-# --- 1. Create directories ---
+
+# Create directories
 mkdir -p ~/Library/Logs/timr
 chmod 755 ~/Library ~/Library/Logs ~/Library/Logs/timr
 
-# --- 2. Create log files ---
-touch ~/Library/Logs/timr/timr-log.txt 
-touch ~/Library/Logs/timr/timr-daily-summary.txt
+
+# Create log files
+touch ~/Library/Logs/timr/timr-daily.txt
+touch ~/Library/Logs/timr/timr-weekly.txt 
 chmod 600 ~/Library/Logs/timr/*.txt
 
 
@@ -23,7 +25,7 @@ cat << 'EOF' > ~/Library/Scripts/timr/timr-start.sh
 USERNAME=$(whoami)
 LOGIN_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 echo "$LOGIN_TIME" > /tmp/timr-last-login.txt
-echo "$LOGIN_TIME LOGIN $USERNAME" >> ~/Library/Logs/timr/timr-log.txt
+echo "$LOGIN_TIME LOGIN $USERNAME" >> ~/Library/Logs/timr/timr-weekly.txt
 EOF
 chmod +x ~/Library/Scripts/timr/timr-start.sh
 
@@ -46,14 +48,14 @@ fi
 
 echo "$LOGOUT_TIME LOGOUT $USERNAME (Session: $DURATION seconds)" >> ~/Library/Logs/timr/timr-log.txt
 
-if grep -q "^$DATE" ~/Library/Logs/timr/timr-daily-summary.txt; then
-    OLD_TOTAL=$(grep "^$DATE" ~/Library/Logs/timr/timr-daily-summary.txt | awk '{print $2}')
+if grep -q "^$DATE" ~/Library/Logs/timr/timr-daily.txt; then
+    OLD_TOTAL=$(grep "^$DATE" ~/Library/Logs/timr/timr-daily.txt | awk '{print $2}')
     NEW_TOTAL=$((OLD_TOTAL + DURATION))
     sed -i '' "/^$DATE/c\\
 $DATE $NEW_TOTAL
-" ~/Library/Logs/timr/timr-daily-summary.txt
+" ~/Library/Logs/timr/timr-daily.txt
 else
-    echo "$DATE $DURATION" >> ~/Library/Logs/timr/timr-daily-summary.txt
+    echo "$DATE $DURATION" >> ~/Library/Logs/timr/timr-daily.txt
 fi
 
 rm -f /tmp/timr-last-login.txt
@@ -124,20 +126,20 @@ cat << 'EOF' > ~/Library/Application\ Support/xbar/plugins/timr.30s.sh
 # Timr xbar plugin
 # Shows day and weekly times
 
-DAILY_FILE="$HOME/Library/Logs/timr/timr-daily-summary.txt"
-FULL_LOG_FILE="$HOME/Library/Logs/timr/timr-log.txt"
-LOGIN_FILE="/tmp/timr-last-login.txt"
+DAILY_LOG_FILE="$HOME/Library/Logs/timr/timr-daily.txt"
+WEEKLY_LOG_FILE="$HOME/Library/Logs/timr/timr-weekly.txt"
+TEMP_LOG_FILE="/tmp/timr-last-login.txt"
 TODAY=$(date "+%Y-%m-%d")
 
 # Today's total
 TODAY_SECONDS=0
-if grep -q "^$TODAY" "$DAILY_FILE" 2>/dev/null; then
-    TODAY_SECONDS=$(grep "^$TODAY" "$DAILY_FILE" | awk '{print $2}')
+if grep -q "^$TODAY" "$DAILY_LOG_FILE" 2>/dev/null; then
+    TODAY_SECONDS=$(grep "^$TODAY" "$DAILY_LOG_FILE" | awk '{print $2}')
 fi
 
 # Add current session
-if [ -f "$LOGIN_FILE" ]; then
-    LOGIN_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S" "$(cat $LOGIN_FILE)" "+%s")
+if [ -f "$TEMP_LOG_FILE" ]; then
+    LOGIN_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S" "$(cat $TEMP_LOG_FILE)" "+%s")
     NOW_EPOCH=$(date "+%s")
     TODAY_SECONDS=$((TODAY_SECONDS + NOW_EPOCH - LOGIN_EPOCH))
 fi
@@ -157,12 +159,12 @@ WEEK_SECONDS=$(awk -v week="$WEEK" '
     if (w == week) total+=$2;
 }
 END { print total }
-' "$DAILY_FILE" 2>/dev/null)
+' "$DAILY_LOG_FILE" 2>/dev/null)
 
 [ -z "$WEEK_SECONDS" ] && WEEK_SECONDS=0
 
 # Add current session to week
-if [ -f "$LOGIN_FILE" ]; then
+if [ -f "$TEMP_LOG_FILE" ]; then
     WEEK_SECONDS=$((WEEK_SECONDS + NOW_EPOCH - LOGIN_EPOCH))
 fi
 
@@ -216,9 +218,9 @@ echo "---"
 echo "$DAY_OUTPUT"
 echo "$WEEK_OUTPUT"
 echo "---"
-echo "Open Logs"
-echo "--Daily Summary | bash='open' param1='"$DAILY_FILE"' terminal=false"
-echo "--Full Log | bash='open' param1='"$FULL_LOG_FILE"' terminal=false"
+echo "Logs"
+echo "--Daily Log | bash='open' param1='"$DAILY_LOG_FILE"' terminal=false"
+echo "--Weekly Log | bash='open' param1='"$WEEKLY_LOG_FILE"' terminal=false"
 echo "---"
 echo "Refresh | refresh=true"
 EOF
