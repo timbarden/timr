@@ -1,20 +1,72 @@
 #!/bin/bash
 # Timr installer for macOS
 
+# Function to check and install Homebrew if needed
+check_homebrew() {
+    if ! command -v brew &> /dev/null; then
+        echo "Homebrew not found. Installing Homebrew first..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    fi
+}
+
 echo "Installing Timr..."
 
+# Check for sleepwatcher requirement
+if [ ! -f "/opt/homebrew/opt/sleepwatcher/sbin/sleepwatcher" ] && [ ! -f "/usr/local/opt/sleepwatcher/sbin/sleepwatcher" ]; then
+    echo ""
+    echo "⚠️  Timr requires sleepwatcher but is not found"
+    echo ""
+    echo "Would you like to install sleepwatcher automatically? (requires Homebrew)"
+    read -p "Install sleepwatcher? (y/n): " -n 1 -r
+    echo ""
+    
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        check_homebrew
+        
+        echo "Installing sleepwatcher via Homebrew..."
+        brew install sleepwatcher
+
+        echo "✅ sleepwatcher installed! Timr installer will continue..."
+        echo ""
+    else
+        echo ""
+        echo "Manual installation required:"
+        echo "1. Install Homebrew: https://brew.sh/"
+        echo "2. Run: brew install sleepwatcher"
+        echo "3. Then run this installer again"
+        echo ""
+        exit 1
+    fi
+fi
 
 # Check for xbar requirement
 if [ ! -d "/Applications/xbar.app" ] && [ ! -d "~/Applications/xbar.app" ]; then
     echo ""
-    echo "⚠️  Timr require xbar"
+    echo "⚠️  xbar is required but not found!"
     echo ""
-    echo "1. Visit: https://xbarapp.com/"
-    echo "2. Download and install xbar"
-    echo "3. Run xbar once to set it up"
-    echo "4. Then run this installer again"
+    echo "Would you like to install xbar automatically? (requires Homebrew)"
+    read -p "Install xbar? (y/n): " -n 1 -r
     echo ""
-    exit 1
+    
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        check_homebrew
+        
+        echo "Installing xbar via Homebrew..."
+        brew install --cask xbar
+        
+        echo ""
+        echo "✅ xbar installed! Timr installer will continue..."
+        echo ""
+    else
+        echo ""
+        echo "Manual installation required:"
+        echo "1. Visit: https://xbarapp.com/"
+        echo "2. Download and install xbar"
+        echo "3. Run xbar once to set it up"
+        echo "4. Then run this installer again"
+        echo ""
+        exit 1
+    fi
 fi
 
 
