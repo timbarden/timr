@@ -1,5 +1,12 @@
-# remove all timr files
+# add 'are you sure' prompt
+read -p "Uninstalling Timr will remove all associated logs and files. Are you sure? (y/n): " -n 1 -r
+echo ""
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Uninstall cancelled."
+    exit 0
+fi
 
+# remove all timr files
 launchctl unload ~/Library/LaunchAgents/com.timr.login.plist
 launchctl unload ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
  

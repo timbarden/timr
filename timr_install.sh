@@ -79,11 +79,11 @@ chmod 755 ~/Library ~/Library/Logs ~/Library/Logs/timr
 
 
 # Create log files if they don't already exist
-if [ ! -f ~/Library/Logs/timr/timr-sessions.txt ]; then
-    touch ~/Library/Logs/timr/timr-sessions.txt
+if [ ! -f ~/Library/Logs/timr/session_logs.txt ]; then
+    touch ~/Library/Logs/timr/session_logs.txt
 fi
-if [ ! -f ~/Library/Logs/timr/timr-times.txt ]; then
-    touch ~/Library/Logs/timr/timr-times.txt
+if [ ! -f ~/Library/Logs/timr/developer_logs.txt ]; then
+    touch ~/Library/Logs/timr/developer_logs.txt
 fi
 chmod 600 ~/Library/Logs/timr/*.txt
 
@@ -98,7 +98,7 @@ cat << 'EOF' > ~/Library/Scripts/timr/timr-start.sh
 USERNAME=$(whoami)
 LOGIN_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 echo "$LOGIN_TIME" > /tmp/timr-last.txt
-echo "$LOGIN_TIME LOGIN $USERNAME" >> ~/Library/Logs/timr/timr-sessions.txt
+echo "$LOGIN_TIME LOGIN $USERNAME" >> ~/Library/Logs/timr/session_logs.txt
 EOF
 chmod +x ~/Library/Scripts/timr/timr-start.sh
 
@@ -119,16 +119,16 @@ else
     DURATION=0
 fi
 
-echo "$LOGOUT_TIME LOGOUT $USERNAME (Session: $DURATION seconds)" >> ~/Library/Logs/timr/timr-sessions.txt
+echo "$LOGOUT_TIME LOGOUT $USERNAME (Session: $DURATION seconds)" >> ~/Library/Logs/timr/session_logs.txt
 
-if grep -q "^$DATE" ~/Library/Logs/timr/timr-times.txt; then
-    OLD_TOTAL=$(grep "^$DATE" ~/Library/Logs/timr/timr-times.txt | awk '{print $2}')
+if grep -q "^$DATE" ~/Library/Logs/timr/developer_logs.txt; then
+    OLD_TOTAL=$(grep "^$DATE" ~/Library/Logs/timr/developer_logs.txt | awk '{print $2}')
     NEW_TOTAL=$((OLD_TOTAL + DURATION))
     sed -i '' "/^$DATE/c\\
 $DATE $NEW_TOTAL
-" ~/Library/Logs/timr/timr-times.txt
+" ~/Library/Logs/timr/developer_logs.txt
 else
-    echo "$DATE $DURATION" >> ~/Library/Logs/timr/timr-times.txt
+    echo "$DATE $DURATION" >> ~/Library/Logs/timr/developer_logs.txt
 fi
 
 rm -f /tmp/timr-last.txt
@@ -205,15 +205,15 @@ cat << 'EOF' > ~/Library/Application\ Support/xbar/plugins/timr.30s.sh
 # Timr xbar plugin
 # Shows day and weekly times
 
-LOGGED_TIMES="$HOME/Library/Logs/timr/timr-times.txt"
-SESSION_LOGS="$HOME/Library/Logs/timr/timr-sessions.txt"
+DEV_LOGS="$HOME/Library/Logs/timr/developer_logs.txt"
+SESSION_LOGS="$HOME/Library/Logs/timr/session_logs.txt"
 TEMP_FILE="/tmp/timr-last.txt"
 TODAY=$(date "+%Y-%m-%d")
 
 # Today's total
 TODAY_SECONDS=0
-if grep -q "^$TODAY" "$LOGGED_TIMES" 2>/dev/null; then
-    TODAY_SECONDS=$(grep "^$TODAY" "$LOGGED_TIMES" | awk '{print $2}')
+if grep -q "^$TODAY" "$DEV_LOGS" 2>/dev/null; then
+    TODAY_SECONDS=$(grep "^$TODAY" "$DEV_LOGS" | awk '{print $2}')
 fi
 
 # Add current session
@@ -237,7 +237,7 @@ WEEK_SECONDS=$(awk -v week="$WEEK" '
     if (w == week) total+=$2;
 }
 END { print total }
-' "$LOGGED_TIMES" 2>/dev/null)
+' "$DEV_LOGS" 2>/dev/null)
 
 [ -z "$WEEK_SECONDS" ] && WEEK_SECONDS=0
 
@@ -297,7 +297,7 @@ echo "$WEEK_OUTPUT"
 echo "---"
 echo "Logs"
 echo "--Session Logs | bash='open' param1='"$SESSION_LOGS"' terminal=false"
-echo "--Logged Times | bash='open' param1='"$LOGGED_TIMES"' terminal=false"
+echo "--Developer Logs | bash='open' param1='"$DEV_LOGS"' terminal=false"
 echo "---"
 echo "Refresh | refresh=true"
 EOF
