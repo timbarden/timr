@@ -1,6 +1,7 @@
 #!/bin/bash
 # Timr installer for macOS
 
+
 # Function to check and install Homebrew if needed
 check_homebrew() {
     if ! command -v brew &> /dev/null; then
@@ -9,7 +10,9 @@ check_homebrew() {
     fi
 }
 
+
 echo "Installing Timr..."
+
 
 # Check for sleepwatcher requirement
 if [ ! -f "/opt/homebrew/opt/sleepwatcher/sbin/sleepwatcher" ] && [ ! -f "/usr/local/opt/sleepwatcher/sbin/sleepwatcher" ]; then
@@ -75,9 +78,13 @@ mkdir -p ~/Library/Logs/timr
 chmod 755 ~/Library ~/Library/Logs ~/Library/Logs/timr
 
 
-# Create log files
-touch ~/Library/Logs/timr/timr-sessions.txt
-touch ~/Library/Logs/timr/timr-times.txt
+# Create log files if they don't already exist
+if [ ! -f ~/Library/Logs/timr/timr-sessions.txt ]; then
+    touch ~/Library/Logs/timr/timr-sessions.txt
+fi
+if [ ! -f ~/Library/Logs/timr/timr-times.txt ]; then
+    touch ~/Library/Logs/timr/timr-times.txt
+fi
 chmod 600 ~/Library/Logs/timr/*.txt
 
 
@@ -176,6 +183,7 @@ cat << 'EOF' > ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
 </plist>
 EOF
 
+
 # check for existence of agents first
 launchctl list | grep com.timr
 if [ $? -eq 0 ]; then
@@ -184,9 +192,11 @@ if [ $? -eq 0 ]; then
     launchctl unload ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
 fi
 
+
 # launch agents
 launchctl load ~/Library/LaunchAgents/com.timr.login.plist
 launchctl load ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
+
 
 # create xbar plugin
 mkdir -p ~/Library/Application\ Support/xbar/plugins
@@ -216,7 +226,6 @@ fi
 # Format HH:MM:SS
 h=$((TODAY_SECONDS/3600))
 m=$(((TODAY_SECONDS%3600)/60))
-TODAY_FMT=$(printf "%02d:%02d" "$h" "$m")
 
 # Weekly total
 WEEK=$(date +%U)
@@ -239,7 +248,6 @@ fi
 
 wh=$((WEEK_SECONDS/3600))
 wm=$(((WEEK_SECONDS%3600)/60))
-WEEK_FMT=$(printf "%02d:%02d" "$wh" "$wm")
 
 DAYS=5
 HOURS=35
@@ -255,7 +263,7 @@ if [ $REMAINING_WEEK_SECONDS -lt 0 ]; then
     WEEK_OUTPUT="Week completed! Overtime: $WEEK_REMAIN"
 fi
 
-# calculate a day remain value based on TOTAL_WEEK_SECONDS/5
+# calculate a day remain value based on TOTAL_WEEK_SECONDS/DAYS
 TOTAL_DAY_SECONDS=$((TOTAL_WEEK_SECONDS/DAYS))
 REMAINING_DAY_SECONDS=$((TOTAL_DAY_SECONDS - TODAY_SECONDS))
 rdh=$((REMAINING_DAY_SECONDS/3600))
@@ -295,10 +303,13 @@ echo "Refresh | refresh=true"
 EOF
 chmod +x ~/Library/Application\ Support/xbar/plugins/timr.30s.sh
 
+
 # refresh xbar
 osascript -e 'tell application "xbar" to quit' && open -a xbar
 
+
 # allow uninstall
 sudo chmod 755 ./timr_uninstall.sh                                                                      
+
 
 echo "Timr installation complete."
