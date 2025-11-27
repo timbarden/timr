@@ -79,13 +79,13 @@ chmod 755 ~/Library ~/Library/Logs ~/Library/Logs/timr
 
 
 # Create log files if they don't already exist
-if [ ! -f ~/Library/Logs/timr/session_logs.txt ]; then
-    touch ~/Library/Logs/timr/session_logs.txt
+if [ ! -f ~/Library/Logs/timr/sessions.log ]; then
+    touch ~/Library/Logs/timr/sessions.log
 fi
-if [ ! -f ~/Library/Logs/timr/developer_logs.txt ]; then
-    touch ~/Library/Logs/timr/developer_logs.txt
+if [ ! -f ~/Library/Logs/timr/developer.log ]; then
+    touch ~/Library/Logs/timr/developer.log
 fi
-chmod 600 ~/Library/Logs/timr/*.txt
+chmod 600 ~/Library/Logs/timr/*.log
 
 
 # Create scripts
@@ -98,7 +98,7 @@ cat << 'EOF' > ~/Library/Scripts/timr/timr-start.sh
 USERNAME=$(whoami)
 LOGIN_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 echo "$LOGIN_TIME" > /tmp/timr-last.txt
-echo "$LOGIN_TIME LOGIN $USERNAME" >> ~/Library/Logs/timr/session_logs.txt
+echo "$LOGIN_TIME LOGIN $USERNAME" >> ~/Library/Logs/timr/sessions.log
 EOF
 chmod +x ~/Library/Scripts/timr/timr-start.sh
 
@@ -119,16 +119,16 @@ else
     DURATION=0
 fi
 
-echo "$LOGOUT_TIME LOGOUT $USERNAME (Session: $DURATION seconds)" >> ~/Library/Logs/timr/session_logs.txt
+echo "$LOGOUT_TIME LOGOUT $USERNAME (Session: $DURATION seconds)" >> ~/Library/Logs/timr/sessions.log
 
-if grep -q "^$DATE" ~/Library/Logs/timr/developer_logs.txt; then
-    OLD_TOTAL=$(grep "^$DATE" ~/Library/Logs/timr/developer_logs.txt | awk '{print $2}')
+if grep -q "^$DATE" ~/Library/Logs/timr/developer.log; then
+    OLD_TOTAL=$(grep "^$DATE" ~/Library/Logs/timr/developer.log | awk '{print $2}')
     NEW_TOTAL=$((OLD_TOTAL + DURATION))
     sed -i '' "/^$DATE/c\\
 $DATE $NEW_TOTAL
-" ~/Library/Logs/timr/developer_logs.txt
+" ~/Library/Logs/timr/developer.log
 else
-    echo "$DATE $DURATION" >> ~/Library/Logs/timr/developer_logs.txt
+    echo "$DATE $DURATION" >> ~/Library/Logs/timr/developer.log
 fi
 
 rm -f /tmp/timr-last.txt
@@ -205,8 +205,8 @@ cat << 'EOF' > ~/Library/Application\ Support/xbar/plugins/timr.30s.sh
 # Timr xbar plugin
 # Shows day and weekly times
 
-DEV_LOGS="$HOME/Library/Logs/timr/developer_logs.txt"
-SESSION_LOGS="$HOME/Library/Logs/timr/session_logs.txt"
+DEV_LOGS="$HOME/Library/Logs/timr/developer.log"
+SESSION_LOGS="$HOME/Library/Logs/timr/sessions.log"
 TEMP_FILE="/tmp/timr-last.txt"
 TODAY=$(date "+%Y-%m-%d")
 
