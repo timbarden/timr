@@ -227,12 +227,12 @@ fi
 h=$((TODAY_SECONDS/3600))
 m=$(((TODAY_SECONDS%3600)/60))
 
-# Weekly total
-WEEK=$(date +%U)
+# Weekly total, starting Monday
+WEEK=$(date +%W)
 WEEK_SECONDS=$(awk -v week="$WEEK" '
 {
     split($1,d,"-");
-    cmd="date -jf %Y-%m-%d " $1 " +%U";
+    cmd="date -jf %Y-%m-%d " $1 " +%W";
     cmd | getline w; close(cmd);
     if (w == week) total+=$2;
 }
@@ -304,6 +304,7 @@ echo "$DAYS_COMPLETED_OUTPUT | size=10"
 echo "---"
 echo "$DAY_OUTPUT"
 echo "$WEEK_OUTPUT"
+echo "$WEEK"
 echo "---"
 echo "Logs"
 echo "--Session Logs | bash='open' param1='"$SESSION_LOGS"' terminal=false"
