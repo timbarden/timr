@@ -257,10 +257,16 @@ TOTAL_WEEK_SECONDS=$((HOURS * 3600))
 REMAINING_WEEK_SECONDS=$((TOTAL_WEEK_SECONDS - WEEK_SECONDS))
 rwh=$((REMAINING_WEEK_SECONDS/3600))
 rwm=$(((REMAINING_WEEK_SECONDS%3600)/60))
+# show overtime as positive value
+if [ $REMAINING_WEEK_SECONDS -lt 0 ]; then
+    rwh=$(( -rwh ))
+    rwm=$(( -rwm ))
+fi
 WEEK_REMAIN=$(printf "%2dh %02dmin" "$rwh" "$rwm")
-WEEK_OUTPUT="Week remaining: $WEEK_REMAIN"
 if [ $REMAINING_WEEK_SECONDS -lt 0 ]; then
     WEEK_OUTPUT="Week completed! Overtime: $WEEK_REMAIN"
+else
+    WEEK_OUTPUT="Week remaining: $WEEK_REMAIN"
 fi
 
 # calculate a day remain value based on TOTAL_WEEK_SECONDS/DAYS
@@ -269,6 +275,10 @@ REMAINING_DAY_SECONDS=$((TOTAL_DAY_SECONDS - TODAY_SECONDS))
 rdh=$((REMAINING_DAY_SECONDS/3600))
 rdm=$(((REMAINING_DAY_SECONDS%3600)/60))
 DAY_REMAIN=$(printf "%2dh %02dmin" "$rdh" "$rdm")
+# ensure day remain does not exceed week remain
+if [ "$DAY_REMAIN" \> "$WEEK_REMAIN" ]; then
+    DAY_REMAIN=$WEEK_REMAIN
+fi
 DAY_OUTPUT="Day remaining: $DAY_REMAIN"
 if [ $REMAINING_DAY_SECONDS -lt 0 ]; then
     DAY_OUTPUT="Day completed!"
