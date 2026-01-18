@@ -2,21 +2,15 @@
 
 A lightweight time-tracking system for macOS that automatically logs work hours and displays progress in the menu bar.
 
-<div style="color: gray;">
-    <figure style="width: 100%; margin: 2em 0;">
-        ![Timr Menu Bar Screenshot](screenshot-1.png)
-        <a href="/screenshot-1.png" target="blank">
-            <img src="screenshot-1.png" alt="Timr Menu Bar Screenshot" style="max-width: 250px;" />
-        </a>
-        <figcaption>Timr showing daily and weekly progress in the menu bar</figcaption>
-    </figure>
-    <figure style="width: 100%; margin: 2em 0;">
-        <a href="/screenshot-2.png" target="blank">
-            <img src="screenshot-2.png" alt="Timr Menu Bar Screenshot" style="max-width: 250px;" />
-        </a>
-        <figcaption>Timr showing one fifth of hours completed</figcaption>
-    </figure>
-</div>
+## Screenshots
+
+<img src="screenshot-1.png" alt="Timr Menu Bar Screenshot" width="300">
+
+*Timr showing daily and weekly progress in the menu bar*
+
+<img src="screenshot-2.png" alt="Timr Menu Bar Screenshot" width="300">
+
+*Timr showing one fifth of hours completed*
 
 ## Dependencies
 
