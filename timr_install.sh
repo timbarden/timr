@@ -97,7 +97,9 @@ cat << 'EOF' > ~/Library/Scripts/timr/timr-start.sh
 #!/bin/bash
 USERNAME=$(whoami)
 LOGIN_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-echo "$LOGIN_TIME" > /tmp/timr-last.txt
+# Only set the in-flight marker if no session is already open,
+# so a wake-after-login doesn't clobber the original login timestamp.
+[ -f /tmp/timr-last.txt ] || echo "$LOGIN_TIME" > /tmp/timr-last.txt
 echo "$LOGIN_TIME LOGIN $USERNAME" >> ~/Library/Logs/timr/sessions.log
 EOF
 chmod +x ~/Library/Scripts/timr/timr-start.sh
@@ -136,12 +138,45 @@ EOF
 chmod +x ~/Library/Scripts/timr/timr-stop.sh
 
 
+# Create shutdown-watch script ---
+# Persistent wrapper that traps SIGTERM (sent by launchd on logout/shutdown)
+# and runs timr-stop.sh to close the in-flight session before the system
+# goes down. The `sleep & wait` pattern is required because bash does not
+# process signals while a foreground builtin is running — `wait` is
+# interruptible, so the trap fires promptly.
+cat << 'EOF' > ~/Library/Scripts/timr/timr-shutdown-watch.sh
+#!/bin/bash
+on_term() {
+    if [ -f /tmp/timr-last.txt ]; then
+        "$HOME/Library/Scripts/timr/timr-stop.sh"
+    fi
+    exit 0
+}
+trap on_term TERM INT
+while :; do
+    sleep 3600 &
+    wait $!
+done
+EOF
+chmod +x ~/Library/Scripts/timr/timr-shutdown-watch.sh
+
+
 # Create LaunchAgents ---
 mkdir -p ~/Library/LaunchAgents
 
 
+# Resolve sleepwatcher binary (Apple Silicon vs Intel Homebrew prefix)
+if [ -x "/opt/homebrew/opt/sleepwatcher/sbin/sleepwatcher" ]; then
+    SLEEPWATCHER_BIN="/opt/homebrew/opt/sleepwatcher/sbin/sleepwatcher"
+else
+    SLEEPWATCHER_BIN="/usr/local/opt/sleepwatcher/sbin/sleepwatcher"
+fi
+
 # Login agent
-cat << 'EOF' > ~/Library/LaunchAgents/com.timr.login.plist
+# NOTE: heredoc is unquoted so $HOME is expanded at install time.
+# launchd does NOT expand $(...) or $VAR inside ProgramArguments, so paths
+# must be fully resolved before being written to the plist.
+cat << EOF > ~/Library/LaunchAgents/com.timr.login.plist
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -150,7 +185,7 @@ cat << 'EOF' > ~/Library/LaunchAgents/com.timr.login.plist
         <string>com.timr.login</string>
         <key>ProgramArguments</key>
         <array>
-            <string>/Users/$(whoami)/Library/Scripts/timr/timr-start.sh</string>
+            <string>${HOME}/Library/Scripts/timr/timr-start.sh</string>
         </array>
         <key>RunAtLoad</key>
         <true/>
@@ -159,7 +194,7 @@ cat << 'EOF' > ~/Library/LaunchAgents/com.timr.login.plist
 EOF
 
 # Create sleepwatcher agent
-cat << 'EOF' > ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
+cat << EOF > ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
 <?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0">
     <dict>
@@ -167,17 +202,40 @@ cat << 'EOF' > ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
         <string>com.timr.sleepwatcher</string>
         <key>ProgramArguments</key>
         <array>
-            <string>/opt/homebrew/opt/sleepwatcher/sbin/sleepwatcher</string>
+            <string>${SLEEPWATCHER_BIN}</string>
             <!-- Verbose mode flag (shows detailed logging of sleepwatcher activity) -->
             <string>-V</string>
             <!-- Sleep flag, followed by the script to run when the system goes to sleep -->
             <string>-s</string>
-            <string>/Users/$(whoami)/Library/Scripts/timr/timr-stop.sh</string>
+            <string>${HOME}/Library/Scripts/timr/timr-stop.sh</string>
             <!-- Wake flag, followed by the script to run when the system wakes up -->
             <string>-w</string>
-            <string>/Users/$(whoami)/Library/Scripts/timr/timr-start.sh</string>
+            <string>${HOME}/Library/Scripts/timr/timr-start.sh</string>
         </array>
         <key>RunAtLoad</key>
+        <true/>
+    </dict>
+</plist>
+EOF
+
+# Shutdown-watch agent
+# Persistent agent that runs timr-shutdown-watch.sh. launchd sends SIGTERM
+# to this process on logout/shutdown, the script's trap runs timr-stop.sh,
+# and the in-flight session is closed before the system goes down.
+cat << EOF > ~/Library/LaunchAgents/com.timr.shutdown.plist
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+        <key>Label</key>
+        <string>com.timr.shutdown</string>
+        <key>ProgramArguments</key>
+        <array>
+            <string>${HOME}/Library/Scripts/timr/timr-shutdown-watch.sh</string>
+        </array>
+        <key>RunAtLoad</key>
+        <true/>
+        <key>KeepAlive</key>
         <true/>
     </dict>
 </plist>
@@ -190,12 +248,14 @@ if [ $? -eq 0 ]; then
     echo "Timr agents already loaded. Unloading existing agents..."
     launchctl unload ~/Library/LaunchAgents/com.timr.login.plist
     launchctl unload ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
+    launchctl unload ~/Library/LaunchAgents/com.timr.shutdown.plist 2>/dev/null
 fi
 
 
 # launch agents
 launchctl load ~/Library/LaunchAgents/com.timr.login.plist
 launchctl load ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
+launchctl load ~/Library/LaunchAgents/com.timr.shutdown.plist
 
 
 # create xbar plugin
