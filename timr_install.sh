@@ -96,45 +96,70 @@ chmod 600 ~/Library/Logs/timr/*.log
 mkdir -p ~/Library/Scripts/timr
 
 
-# Create login script ---
+# Create start script ---
+# Accepts an optional reason argument (e.g. login, wake, resume) that is
+# written into sessions.log so each line explains which trigger fired it.
+# Honours the pause flag: if the user has manually paused Timr, lid-close
+# and subsequent wake events must not silently resume the timer.
 cat << 'EOF' > ~/Library/Scripts/timr/timr-start.sh
 #!/bin/bash
+REASON=${1:-unknown}
 USERNAME=$(whoami)
-LOGIN_TIME=$(date '+%Y-%m-%d %H:%M:%S')
-# Only set the in-flight marker if no session is already open,
-# so a wake-after-login doesn't clobber the original login timestamp.
-[ -f /tmp/timr-last.txt ] || echo "$LOGIN_TIME" > /tmp/timr-last.txt
-echo "$LOGIN_TIME LOGIN $USERNAME" >> ~/Library/Logs/timr/sessions.log
+NOW=$(date '+%Y-%m-%d %H:%M:%S')
+PAUSE_FLAG="$HOME/Library/Application Support/timr/paused"
+
+# Honour manual pause: if the user paused Timr, a wake or login must not
+# re-create the in-flight marker. The pause flag is cleared explicitly via
+# the xbar Resume action.
+if [ -f "$PAUSE_FLAG" ]; then
+    echo "$NOW START $REASON $USERNAME (skipped: paused)" >> ~/Library/Logs/timr/sessions.log
+    exit 0
+fi
+
+# Only set the in-flight marker if no session is already open, so a
+# wake-after-login doesn't clobber the original login timestamp.
+[ -f /tmp/timr-last.txt ] || echo "$NOW" > /tmp/timr-last.txt
+echo "$NOW START $REASON $USERNAME" >> ~/Library/Logs/timr/sessions.log
 EOF
 chmod +x ~/Library/Scripts/timr/timr-start.sh
 
 
 # Create stop script ---
+# Accepts an optional reason argument (e.g. sleep, shutdown, pause). If no
+# in-flight marker exists (already stopped, or called during pause), the
+# script still logs the STOP line for the audit trail but does not touch
+# developer.log.
 cat << 'EOF' > ~/Library/Scripts/timr/timr-stop.sh
 #!/bin/bash
+REASON=${1:-unknown}
 USERNAME=$(whoami)
-LOGOUT_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+NOW=$(date '+%Y-%m-%d %H:%M:%S')
 DATE=$(date '+%Y-%m-%d')
 
 if [ -f /tmp/timr-last.txt ]; then
     LOGIN_TIME=$(cat /tmp/timr-last.txt)
     LOGIN_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S" "$LOGIN_TIME" "+%s")
-    LOGOUT_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S" "$LOGOUT_TIME" "+%s")
-    DURATION=$((LOGOUT_EPOCH - LOGIN_EPOCH))
+    NOW_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S" "$NOW" "+%s")
+    DURATION=$((NOW_EPOCH - LOGIN_EPOCH))
 else
     DURATION=0
 fi
 
-echo "$LOGOUT_TIME LOGOUT $USERNAME (Session: $DURATION seconds)" >> ~/Library/Logs/timr/sessions.log
+echo "$NOW STOP $REASON $USERNAME (Session: $DURATION seconds)" >> ~/Library/Logs/timr/sessions.log
 
-if grep -q "^$DATE" ~/Library/Logs/timr/developer.log; then
-    OLD_TOTAL=$(grep "^$DATE" ~/Library/Logs/timr/developer.log | awk '{print $2}')
-    NEW_TOTAL=$((OLD_TOTAL + DURATION))
-    sed -i '' "/^$DATE/c\\
+# Only accumulate into developer.log if there was an actual session open.
+# A STOP with no marker (e.g. a redundant shutdown trap after pause) must
+# not add a zero-duration entry.
+if [ "$DURATION" -gt 0 ]; then
+    if grep -q "^$DATE" ~/Library/Logs/timr/developer.log; then
+        OLD_TOTAL=$(grep "^$DATE" ~/Library/Logs/timr/developer.log | awk '{print $2}')
+        NEW_TOTAL=$((OLD_TOTAL + DURATION))
+        sed -i '' "/^$DATE/c\\
 $DATE $NEW_TOTAL
 " ~/Library/Logs/timr/developer.log
-else
-    echo "$DATE $DURATION" >> ~/Library/Logs/timr/developer.log
+    else
+        echo "$DATE $DURATION" >> ~/Library/Logs/timr/developer.log
+    fi
 fi
 
 rm -f /tmp/timr-last.txt
@@ -152,7 +177,7 @@ cat << 'EOF' > ~/Library/Scripts/timr/timr-shutdown-watch.sh
 #!/bin/bash
 on_term() {
     if [ -f /tmp/timr-last.txt ]; then
-        "$HOME/Library/Scripts/timr/timr-stop.sh"
+        "$HOME/Library/Scripts/timr/timr-stop.sh" shutdown
     fi
     exit 0
 }
@@ -190,6 +215,7 @@ cat << EOF > ~/Library/LaunchAgents/com.timr.login.plist
         <key>ProgramArguments</key>
         <array>
             <string>${HOME}/Library/Scripts/timr/timr-start.sh</string>
+            <string>login</string>
         </array>
         <key>RunAtLoad</key>
         <true/>
@@ -209,12 +235,13 @@ cat << EOF > ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
             <string>${SLEEPWATCHER_BIN}</string>
             <!-- Verbose mode flag (shows detailed logging of sleepwatcher activity) -->
             <string>-V</string>
-            <!-- Sleep flag, followed by the script to run when the system goes to sleep -->
+            <!-- Sleep flag. sleepwatcher passes the command through /bin/sh,
+                 so we can include the reason argument inline. -->
             <string>-s</string>
-            <string>${HOME}/Library/Scripts/timr/timr-stop.sh</string>
-            <!-- Wake flag, followed by the script to run when the system wakes up -->
+            <string>${HOME}/Library/Scripts/timr/timr-stop.sh sleep</string>
+            <!-- Wake flag, same mechanism. -->
             <string>-w</string>
-            <string>${HOME}/Library/Scripts/timr/timr-start.sh</string>
+            <string>${HOME}/Library/Scripts/timr/timr-start.sh wake</string>
         </array>
         <key>RunAtLoad</key>
         <true/>
@@ -288,6 +315,10 @@ cat << 'EOF' > ~/Library/Application\ Support/xbar/plugins/timr.30s.sh
 # effect instantly.
 CONFIG_DIR="$HOME/Library/Application Support/timr"
 CONFIG_FILE="$CONFIG_DIR/config"
+PAUSE_FLAG="$CONFIG_DIR/paused"
+LAST_PROMPT_FILE="$CONFIG_DIR/last-prompt"
+START_SCRIPT="$HOME/Library/Scripts/timr/timr-start.sh"
+STOP_SCRIPT="$HOME/Library/Scripts/timr/timr-stop.sh"
 mkdir -p "$CONFIG_DIR"
 
 # Defaults (used on first run or if a key is missing from the config file)
@@ -330,6 +361,21 @@ prompt_number() {
               -e 'text returned of result' 2>/dev/null
 }
 
+do_pause() {
+    # Close the current session cleanly, then raise the pause flag. The
+    # flag must exist before any subsequent wake/login event so those
+    # scripts know to skip re-creating the marker.
+    "$STOP_SCRIPT" pause
+    touch "$PAUSE_FLAG"
+}
+
+do_resume() {
+    # Clear the flag first so the start script is allowed to create a new
+    # marker, then start a fresh session.
+    rm -f "$PAUSE_FLAG"
+    "$START_SCRIPT" resume
+}
+
 case "$1" in
     set-hours)
         is_positive_number "$2" && write_config "$2" "$DAYS"
@@ -349,7 +395,57 @@ case "$1" in
         [ -n "$new" ] && is_positive_number "$new" && write_config "$HOURS" "$new"
         exit 0
         ;;
+    pause)
+        do_pause
+        exit 0
+        ;;
+    resume)
+        do_resume
+        exit 0
+        ;;
 esac
+
+# ----------------------------
+# Paused state + resume prompt
+# ----------------------------
+# If the pause flag exists, Timr is in manual-pause mode. The flag's mtime
+# is the moment pause was activated, so we use `stat` to compute how long
+# we've been paused without needing to store the timestamp in the file.
+PAUSED=0
+PAUSED_SINCE=0
+if [ -f "$PAUSE_FLAG" ]; then
+    PAUSED=1
+    PAUSED_SINCE=$(stat -f %m "$PAUSE_FLAG" 2>/dev/null || echo 0)
+fi
+
+# Resume prompt: if paused for more than 60s AND there's been recent HID
+# activity AND we haven't already prompted in the last 5 minutes, pop a
+# dialog asking whether to resume. The rate limit prevents spam if the
+# user dismisses the dialog and keeps working. HIDIdleTime is reported in
+# nanoseconds by ioreg — divide to get seconds.
+if [ "$PAUSED" = "1" ]; then
+    NOW_EPOCH_PROMPT=$(date +%s)
+    PAUSED_FOR=$((NOW_EPOCH_PROMPT - PAUSED_SINCE))
+    if [ "$PAUSED_FOR" -gt 60 ]; then
+        IDLE_NS=$(ioreg -c IOHIDSystem 2>/dev/null | awk '/HIDIdleTime/ {print $NF; exit}')
+        IDLE_SECONDS=$(( ${IDLE_NS:-999999999999} / 1000000000 ))
+
+        LAST_PROMPT=0
+        [ -f "$LAST_PROMPT_FILE" ] && LAST_PROMPT=$(stat -f %m "$LAST_PROMPT_FILE" 2>/dev/null || echo 0)
+        SINCE_PROMPT=$((NOW_EPOCH_PROMPT - LAST_PROMPT))
+
+        if [ "$IDLE_SECONDS" -lt 10 ] && [ "$SINCE_PROMPT" -gt 300 ]; then
+            touch "$LAST_PROMPT_FILE"
+            RESPONSE=$(osascript \
+                -e 'display dialog "Timr is paused. Resume the timer?" buttons {"Stay paused","Resume"} default button "Resume" with title "Timr"' \
+                -e 'button returned of result' 2>/dev/null)
+            if [ "$RESPONSE" = "Resume" ]; then
+                do_resume
+                PAUSED=0
+            fi
+        fi
+    fi
+fi
 
 DEV_LOGS="$HOME/Library/Logs/timr/developer.log"
 SESSION_LOGS="$HOME/Library/Logs/timr/sessions.log"
@@ -447,10 +543,24 @@ done
 # ----------------------------
 # Menu bar output
 # ----------------------------
-echo "$DAYS_COMPLETED_OUTPUT | size=10"
+if [ "$PAUSED" = "1" ]; then
+    echo "⏸ $DAYS_COMPLETED_OUTPUT | size=10"
+else
+    echo "$DAYS_COMPLETED_OUTPUT | size=10"
+fi
 echo "---"
+if [ "$PAUSED" = "1" ]; then
+    echo "Status: Paused"
+fi
 echo "$DAY_OUTPUT"
 echo "$WEEK_OUTPUT"
+echo "---"
+# Pause/Resume toggle — label and action depend on current state.
+if [ "$PAUSED" = "1" ]; then
+    printf -- "Resume timer | bash=\"%s\" param1=resume terminal=false refresh=true\n" "$0"
+else
+    printf -- "Pause timer | bash=\"%s\" param1=pause terminal=false refresh=true\n" "$0"
+fi
 echo "---"
 echo "Settings"
 # Weekly hour target submenu. Each preset re-invokes this plugin with
