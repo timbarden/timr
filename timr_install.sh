@@ -290,10 +290,6 @@ if [ -f "$TEMP_FILE" ]; then
     TODAY_SECONDS=$((TODAY_SECONDS + NOW_EPOCH - LOGIN_EPOCH))
 fi
 
-# Format HH:MM:SS
-h=$((TODAY_SECONDS/3600))
-m=$(((TODAY_SECONDS%3600)/60))
-
 # Weekly total, starting Monday
 WEEK=$(date +%W)
 WEEK_SECONDS=$(awk -v week="$WEEK" '
@@ -312,9 +308,6 @@ END { print total }
 if [ -f "$TEMP_FILE" ]; then
     WEEK_SECONDS=$((WEEK_SECONDS + NOW_EPOCH - LOGIN_EPOCH))
 fi
-
-wh=$((WEEK_SECONDS/3600))
-wm=$(((WEEK_SECONDS%3600)/60))
 
 DAYS=5
 HOURS=35
@@ -353,8 +346,11 @@ if [ $REMAINING_DAY_SECONDS -lt 0 ]; then
     DAY_OUTPUT="Day completed!"
 fi
 
-# calculate number of days completed this week
-DAYS_COMPLETED=$(( (TOTAL_WEEK_SECONDS - REMAINING_WEEK_SECONDS) / TOTAL_DAY_SECONDS ))
+# Number of full days completed this week, clamped to [0, DAYS] so
+# overtime doesn't produce a count higher than the dots we render.
+DAYS_COMPLETED=$(( WEEK_SECONDS / TOTAL_DAY_SECONDS ))
+if [ $DAYS_COMPLETED -gt $DAYS ]; then DAYS_COMPLETED=$DAYS; fi
+if [ $DAYS_COMPLETED -lt 0 ]; then DAYS_COMPLETED=0; fi
 
 # visual output of 'days' completed
 DAYS_COMPLETED_OUTPUT=""
@@ -375,8 +371,8 @@ echo "$DAY_OUTPUT"
 echo "$WEEK_OUTPUT"
 echo "---"
 echo "Logs"
-echo "--Session Logs | bash='open' param1='"$SESSION_LOGS"' terminal=false"
-echo "--Developer Logs | bash='open' param1='"$DEV_LOGS"' terminal=false"
+printf -- "--Session Logs | bash=open param1=%s terminal=false\n" "$SESSION_LOGS"
+printf -- "--Developer Logs | bash=open param1=%s terminal=false\n" "$DEV_LOGS"
 echo "---"
 echo "Refresh | refresh=true"
 EOF
