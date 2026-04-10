@@ -9,10 +9,13 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     exit 0
 fi
 
-# Unload agents (ignore errors if already unloaded / never loaded)
-launchctl unload ~/Library/LaunchAgents/com.timr.login.plist 2>/dev/null
-launchctl unload ~/Library/LaunchAgents/com.timr.sleepwatcher.plist 2>/dev/null
-launchctl unload ~/Library/LaunchAgents/com.timr.shutdown.plist 2>/dev/null
+# Unload agents using the modern bootout API (legacy `unload` still works
+# but prints deprecation warnings on Sonoma+). Errors are suppressed
+# because agents may not be loaded.
+GUI_DOMAIN="gui/$(id -u)"
+launchctl bootout "$GUI_DOMAIN/com.timr.login" 2>/dev/null
+launchctl bootout "$GUI_DOMAIN/com.timr.sleepwatcher" 2>/dev/null
+launchctl bootout "$GUI_DOMAIN/com.timr.shutdown" 2>/dev/null
 
 # Remove all timr files
 rm -f ~/Library/Application\ Support/xbar/plugins/timr.30s.sh

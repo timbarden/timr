@@ -128,38 +128,66 @@ chmod +x ~/Library/Scripts/timr/timr-start.sh
 # Accepts an optional reason argument (e.g. sleep, shutdown, pause). If no
 # in-flight marker exists (already stopped, or called during pause), the
 # script still logs the STOP line for the audit trail but does not touch
-# developer.log.
+# developer.log. Sessions that span midnight are split so each calendar
+# day gets credited only the seconds that actually fell within it.
 cat << 'EOF' > ~/Library/Scripts/timr/timr-stop.sh
 #!/bin/bash
 REASON=${1:-unknown}
 USERNAME=$(whoami)
 NOW=$(date '+%Y-%m-%d %H:%M:%S')
-DATE=$(date '+%Y-%m-%d')
+NOW_EPOCH=$(date '+%s')
+DEV_LOG=~/Library/Logs/timr/developer.log
 
 if [ -f /tmp/timr-last.txt ]; then
     LOGIN_TIME=$(cat /tmp/timr-last.txt)
     LOGIN_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S" "$LOGIN_TIME" "+%s")
-    NOW_EPOCH=$(date -j -f "%Y-%m-%d %H:%M:%S" "$NOW" "+%s")
     DURATION=$((NOW_EPOCH - LOGIN_EPOCH))
 else
+    LOGIN_EPOCH=0
     DURATION=0
 fi
 
 echo "$NOW STOP $REASON $USERNAME (Session: $DURATION seconds)" >> ~/Library/Logs/timr/sessions.log
 
+# Accumulate `$2` seconds into the line for date `$1` in developer.log,
+# creating the line if it doesn't exist.
+accumulate_day() {
+    local day=$1
+    local secs=$2
+    if grep -q "^$day" "$DEV_LOG"; then
+        local old_total
+        old_total=$(grep "^$day" "$DEV_LOG" | awk '{print $2}')
+        local new_total=$((old_total + secs))
+        sed -i '' "/^$day/c\\
+$day $new_total
+" "$DEV_LOG"
+    else
+        echo "$day $secs" >> "$DEV_LOG"
+    fi
+}
+
 # Only accumulate into developer.log if there was an actual session open.
 # A STOP with no marker (e.g. a redundant shutdown trap after pause) must
 # not add a zero-duration entry.
 if [ "$DURATION" -gt 0 ]; then
-    if grep -q "^$DATE" ~/Library/Logs/timr/developer.log; then
-        OLD_TOTAL=$(grep "^$DATE" ~/Library/Logs/timr/developer.log | awk '{print $2}')
-        NEW_TOTAL=$((OLD_TOTAL + DURATION))
-        sed -i '' "/^$DATE/c\\
-$DATE $NEW_TOTAL
-" ~/Library/Logs/timr/developer.log
-    else
-        echo "$DATE $DURATION" >> ~/Library/Logs/timr/developer.log
-    fi
+    # Walk the session day-by-day. For each iteration, segment_start is
+    # somewhere inside a calendar day, and segment_end is either the next
+    # midnight or the real session end, whichever comes first. The day the
+    # segment belongs to is derived from segment_start. Using `date -v+1d`
+    # to advance by one day handles DST transitions correctly (86400 would
+    # misbehave on DST change days).
+    segment_start=$LOGIN_EPOCH
+    while [ "$segment_start" -lt "$NOW_EPOCH" ]; do
+        day=$(date -r "$segment_start" "+%Y-%m-%d")
+        next_midnight=$(date -j -v+1d -f "%Y-%m-%d %H:%M:%S" "$day 00:00:00" "+%s")
+        if [ "$next_midnight" -gt "$NOW_EPOCH" ]; then
+            segment_end=$NOW_EPOCH
+        else
+            segment_end=$next_midnight
+        fi
+        accumulate_day "$day" "$((segment_end - segment_start))"
+        segment_start=$segment_end
+    done
 fi
 
 rm -f /tmp/timr-last.txt
@@ -273,23 +301,21 @@ cat << EOF > ~/Library/LaunchAgents/com.timr.shutdown.plist
 EOF
 
 
-# Unload any previously installed agents (ignore errors if not loaded).
-# `set -e` is temporarily disabled because `launchctl list | grep` returns
-# non-zero when no agents match, which is a valid first-install case.
+# Load the agents using the modern `launchctl bootstrap`/`bootout` API.
+# The legacy `load`/`unload` commands still work but print deprecation
+# warnings on Sonoma+. `bootout` errors if the agent isn't loaded, so we
+# suppress errors — first install is a valid case. `set -e` is briefly
+# disabled around bootout since its failure is expected.
+GUI_DOMAIN="gui/$(id -u)"
 set +e
-if launchctl list | grep -q com.timr; then
-    echo "Timr agents already loaded. Unloading existing agents..."
-    launchctl unload ~/Library/LaunchAgents/com.timr.login.plist 2>/dev/null
-    launchctl unload ~/Library/LaunchAgents/com.timr.sleepwatcher.plist 2>/dev/null
-    launchctl unload ~/Library/LaunchAgents/com.timr.shutdown.plist 2>/dev/null
-fi
+launchctl bootout "$GUI_DOMAIN/com.timr.login" 2>/dev/null
+launchctl bootout "$GUI_DOMAIN/com.timr.sleepwatcher" 2>/dev/null
+launchctl bootout "$GUI_DOMAIN/com.timr.shutdown" 2>/dev/null
 set -e
 
-
-# launch agents
-launchctl load ~/Library/LaunchAgents/com.timr.login.plist
-launchctl load ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
-launchctl load ~/Library/LaunchAgents/com.timr.shutdown.plist
+launchctl bootstrap "$GUI_DOMAIN" ~/Library/LaunchAgents/com.timr.login.plist
+launchctl bootstrap "$GUI_DOMAIN" ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
+launchctl bootstrap "$GUI_DOMAIN" ~/Library/LaunchAgents/com.timr.shutdown.plist
 
 
 # create xbar plugin
@@ -345,9 +371,17 @@ fi
 # plugin afterwards, and the next read picks up the new values.
 
 is_positive_number() {
-    # Accept integer or decimal, must parse as > 0.
+    # Accept integer or decimal, must parse as > 0. Used for HOURS, where
+    # values like 37.5 are legitimate.
     [[ "$1" =~ ^[0-9]+(\.[0-9]+)?$ ]] || return 1
     awk -v v="$1" 'BEGIN { exit !(v > 0) }'
+}
+
+is_positive_integer() {
+    # Integer only, > 0. Used for DAYS, because bash integer arithmetic
+    # (`$((TOTAL/DAYS))`) can't handle decimals and we'd error out on
+    # render if a decimal slipped into the config.
+    [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -gt 0 ]
 }
 
 write_config() {
@@ -387,12 +421,12 @@ case "$1" in
         exit 0
         ;;
     set-days)
-        is_positive_number "$2" && write_config "$HOURS" "$2"
+        is_positive_integer "$2" && write_config "$HOURS" "$2"
         exit 0
         ;;
     set-days-custom)
-        new=$(prompt_number "Work days per week:" "$DAYS")
-        [ -n "$new" ] && is_positive_number "$new" && write_config "$HOURS" "$new"
+        new=$(prompt_number "Work days per week (whole number):" "$DAYS")
+        [ -n "$new" ] && is_positive_integer "$new" && write_config "$HOURS" "$new"
         exit 0
         ;;
     pause)
@@ -465,12 +499,13 @@ if [ -f "$TEMP_FILE" ]; then
     TODAY_SECONDS=$((TODAY_SECONDS + NOW_EPOCH - LOGIN_EPOCH))
 fi
 
-# Weekly total, starting Monday
-WEEK=$(date +%W)
+# Weekly total, starting Monday. Filter by year-qualified week (e.g.
+# "2026-15") rather than bare week number, so entries from the same week
+# number in a previous year don't contaminate the current week's total.
+WEEK=$(date +%Y-%W)
 WEEK_SECONDS=$(awk -v week="$WEEK" '
 {
-    split($1,d,"-");
-    cmd="date -jf %Y-%m-%d " $1 " +%W";
+    cmd="date -jf %Y-%m-%d " $1 " +%Y-%W";
     cmd | getline w; close(cmd);
     if (w == week) total+=$2;
 }
@@ -484,10 +519,12 @@ if [ -f "$TEMP_FILE" ]; then
     WEEK_SECONDS=$((WEEK_SECONDS + NOW_EPOCH - LOGIN_EPOCH))
 fi
 
-# Safety fallbacks in case xbar passes empty/invalid values
+# Safety fallbacks. HOURS may be decimal; DAYS must be a positive integer
+# because bash integer arithmetic (used below) can't divide by a decimal.
+# If a stale/tampered config produces a non-integer DAYS, fall back to 5
+# rather than erroring out at render time.
 [ -z "$HOURS" ] && HOURS=35
-[ -z "$DAYS" ] && DAYS=5
-[ "$DAYS" -lt 1 ] 2>/dev/null && DAYS=5
+[[ "$DAYS" =~ ^[0-9]+$ ]] && [ "$DAYS" -gt 0 ] || DAYS=5
 
 # HOURS may be decimal (e.g. 37.5), so use awk instead of bash arithmetic
 # which is integer-only. Result is truncated to whole seconds.
