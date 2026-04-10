@@ -31,14 +31,25 @@ The installer will:
 2. Offer to install them automatically via Homebrew if missing
 3. Install the xbar menu bar plugin
 
-After installation, sleep and wake the Mac to start tracking time
+After installation, log in (or sleep/wake) to start tracking time.
 
 ## What it does
 
-- Automatically tracks time when you sleep or log in/out
+- Automatically tracks time across login, wake, sleep, logout, and shutdown
 - Shows progress in your menu bar with visual indicators
 - Targets: 7 hours per day, 35 hours per week
 - Click the menu bar item to access your time logs
+
+### How sessions are captured
+
+| Event              | How it's captured                                    |
+|--------------------|------------------------------------------------------|
+| Boot / login       | Login LaunchAgent runs the start script at load     |
+| Wake               | `sleepwatcher -w` runs the start script             |
+| Sleep              | `sleepwatcher -s` runs the stop script              |
+| Logout / shutdown  | Persistent agent traps SIGTERM and runs the stop script |
+
+Hard power-off and kernel panics cannot be caught — in those cases the in-flight session is lost, but future sessions recover cleanly on next boot.
 
 ## Uninstall
 

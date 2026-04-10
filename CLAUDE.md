@@ -4,22 +4,40 @@ Timr is a macOS time-tracking system delivered as two bash scripts: `timr_instal
 
 ## Architecture
 
-The installer generates and deploys four independent pieces that together form the running system. When editing behavior, identify which piece owns the logic before changing it:
+The installer generates and deploys several independent pieces that together form the running system. When editing behavior, identify which piece owns the logic before changing it:
 
-1. **`~/Library/Scripts/timr/timr-start.sh`** — writes login timestamp to `/tmp/timr-last.txt` and appends a LOGIN line to `sessions.log`. Runs on login and on wake.
-2. **`~/Library/Scripts/timr/timr-stop.sh`** — reads `/tmp/timr-last.txt`, computes session duration, appends LOGOUT to `sessions.log`, and accumulates the day's total into `developer.log` (one line per date: `YYYY-MM-DD <seconds>`). Runs on sleep.
-3. **`~/Library/LaunchAgents/com.timr.login.plist`** and **`com.timr.sleepwatcher.plist`** — the login agent runs `timr-start.sh` at load; the sleepwatcher agent invokes Homebrew's `sleepwatcher` binary with `-s` (stop on sleep) and `-w` (start on wake).
-4. **`~/Library/Application Support/xbar/plugins/timr.30s.sh`** — xbar plugin refreshed every 30s. Reads `developer.log`, adds the in-flight session from `/tmp/timr-last.txt`, computes day/week remaining against `HOURS=35` / `DAYS=5` targets, and emits xbar menu output. Week is determined by `date +%W` (ISO week, Monday start).
+1. **`~/Library/Scripts/timr/timr-start.sh`** — appends a LOGIN line to `sessions.log` and writes the login timestamp to `/tmp/timr-last.txt` **only if the marker doesn't already exist**, so a wake-after-login doesn't clobber the original session start. Runs on login and on wake.
+2. **`~/Library/Scripts/timr/timr-stop.sh`** — reads `/tmp/timr-last.txt`, computes session duration, appends LOGOUT to `sessions.log`, and accumulates the day's total into `developer.log` (one line per date: `YYYY-MM-DD <seconds>`). Runs on sleep, on logout, and on shutdown.
+3. **`~/Library/Scripts/timr/timr-shutdown-watch.sh`** — a persistent bash wrapper that traps `SIGTERM`/`SIGINT` and calls `timr-stop.sh`. Uses the `sleep & wait` pattern because bash does not process signals while a foreground builtin is blocking. Exists solely so logout/shutdown (which sleepwatcher does **not** cover) closes the in-flight session before the system goes down.
+4. **Three LaunchAgents in `~/Library/LaunchAgents/`**:
+   - `com.timr.login.plist` — runs `timr-start.sh` at load (boot/login/wake).
+   - `com.timr.sleepwatcher.plist` — invokes Homebrew's `sleepwatcher` with `-s timr-stop.sh` (sleep) and `-w timr-start.sh` (wake). sleepwatcher does **not** fire its `-s` script on its own termination, so there's no double-stop conflict with the shutdown watcher.
+   - `com.timr.shutdown.plist` — runs `timr-shutdown-watch.sh` with `RunAtLoad` + `KeepAlive`. launchd sends SIGTERM to all agents on logout/shutdown; this one's trap catches it and records the stop.
+5. **`~/Library/Application Support/xbar/plugins/timr.30s.sh`** — xbar plugin refreshed every 30s. Reads `developer.log`, adds the in-flight session from `/tmp/timr-last.txt`, computes day/week remaining against `HOURS=35` / `DAYS=5` targets, and emits xbar menu output. Week is determined by `date +%W` (Monday-based week number).
+
+### Event coverage
+
+| Event              | Triggered by              | Runs             |
+|--------------------|---------------------------|------------------|
+| Boot / login       | `com.timr.login` RunAtLoad | `timr-start.sh` |
+| Wake               | sleepwatcher `-w`          | `timr-start.sh` |
+| Sleep              | sleepwatcher `-s`          | `timr-stop.sh`  |
+| Logout / shutdown  | SIGTERM to shutdown agent  | `timr-stop.sh`  |
+
+Hard power-off / kernel panic cannot be caught. `/tmp/timr-last.txt` is cleared by macOS on next boot, so the in-flight session is simply lost (no stale marker corrupts future sessions).
 
 ### Data flow
 
-`sleepwatcher` / login → start/stop scripts → `~/Library/Logs/timr/{sessions.log, developer.log}` + `/tmp/timr-last.txt` (in-flight marker) → xbar plugin reads all three to render the menu bar.
+Events → start/stop scripts → `~/Library/Logs/timr/{sessions.log, developer.log}` + `/tmp/timr-last.txt` (in-flight marker) → xbar plugin reads all three to render the menu bar.
 
 `developer.log` is the source of truth for aggregated time; `sessions.log` is an append-only audit trail; `/tmp/timr-last.txt` signals an active session.
 
 ### Editing generated scripts
 
-All four deployed files are heredocs inside `timr_install.sh`. To change runtime behavior, edit the heredoc body in the installer — **not** the installed file, which will be overwritten on the next install. The heredocs use `<< 'EOF'` (quoted), so `$VAR` inside them is expanded at script runtime, not install time. The exceptions are the plist `ProgramArguments` which use `$(whoami)` — this is expanded by `launchctl`/shell at agent load, so the installed plist contains a literal `$(whoami)`.
+All deployed files are heredocs inside `timr_install.sh`. To change runtime behavior, edit the heredoc body in the installer — **not** the installed file, which will be overwritten on the next install. Two heredoc styles are used deliberately:
+
+- **Shell scripts** use `<< 'EOF'` (quoted) so `$VAR` is expanded at script runtime, not install time.
+- **Plists** use `<< EOF` (unquoted) so `$HOME` and `$SLEEPWATCHER_BIN` are expanded at install time and baked into the plist. launchd does **not** expand `$VAR` or `$(...)` inside `ProgramArguments`, so paths must be fully resolved before being written. An earlier bug where the plists contained a literal `/Users/$(whoami)/...` silently broke the login agent for a long time — don't reintroduce it.
 
 ## Common commands
 
