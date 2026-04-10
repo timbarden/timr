@@ -1,6 +1,10 @@
 #!/bin/bash
 # Timr installer for macOS
 
+# Exit immediately if any command fails, so a half-broken install can't
+# silently continue past (e.g.) a failed mkdir or failed heredoc write.
+set -e
+
 
 # Function to check and install Homebrew if needed
 check_homebrew() {
@@ -43,7 +47,7 @@ if [ ! -f "/opt/homebrew/opt/sleepwatcher/sbin/sleepwatcher" ] && [ ! -f "/usr/l
 fi
 
 # Check for xbar requirement
-if [ ! -d "/Applications/xbar.app" ] && [ ! -d "~/Applications/xbar.app" ]; then
+if [ ! -d "/Applications/xbar.app" ] && [ ! -d "$HOME/Applications/xbar.app" ]; then
     echo ""
     echo "⚠️  xbar is required but not found!"
     echo ""
@@ -75,7 +79,7 @@ fi
 
 # Create directories
 mkdir -p ~/Library/Logs/timr
-chmod 755 ~/Library ~/Library/Logs ~/Library/Logs/timr
+chmod 755 ~/Library/Logs/timr
 
 
 # Create log files if they don't already exist
@@ -242,14 +246,17 @@ cat << EOF > ~/Library/LaunchAgents/com.timr.shutdown.plist
 EOF
 
 
-# check for existence of agents first
-launchctl list | grep com.timr
-if [ $? -eq 0 ]; then
+# Unload any previously installed agents (ignore errors if not loaded).
+# `set -e` is temporarily disabled because `launchctl list | grep` returns
+# non-zero when no agents match, which is a valid first-install case.
+set +e
+if launchctl list | grep -q com.timr; then
     echo "Timr agents already loaded. Unloading existing agents..."
-    launchctl unload ~/Library/LaunchAgents/com.timr.login.plist
-    launchctl unload ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
+    launchctl unload ~/Library/LaunchAgents/com.timr.login.plist 2>/dev/null
+    launchctl unload ~/Library/LaunchAgents/com.timr.sleepwatcher.plist 2>/dev/null
     launchctl unload ~/Library/LaunchAgents/com.timr.shutdown.plist 2>/dev/null
 fi
+set -e
 
 
 # launch agents
@@ -335,8 +342,10 @@ REMAINING_DAY_SECONDS=$((TOTAL_DAY_SECONDS - TODAY_SECONDS))
 rdh=$((REMAINING_DAY_SECONDS/3600))
 rdm=$(((REMAINING_DAY_SECONDS%3600)/60))
 DAY_REMAIN=$(printf "%2dh %02dmin" "$rdh" "$rdm")
-# ensure day remain does not exceed week remain
-if [ "$DAY_REMAIN" \> "$WEEK_REMAIN" ]; then
+# Ensure day remaining never exceeds week remaining (compare seconds, not
+# formatted strings — formatted strings compare lexically and produce wrong
+# answers like " 7h 00min" < "12h 00min").
+if [ $REMAINING_DAY_SECONDS -gt $REMAINING_WEEK_SECONDS ]; then
     DAY_REMAIN=$WEEK_REMAIN
 fi
 DAY_OUTPUT="Day remaining: $DAY_REMAIN"
@@ -374,12 +383,9 @@ EOF
 chmod +x ~/Library/Application\ Support/xbar/plugins/timr.30s.sh
 
 
-# refresh xbar
-osascript -e 'tell application "xbar" to quit' && open -a xbar
-
-
-# allow uninstall
-sudo chmod 755 ./timr_uninstall.sh                                                                      
+# refresh xbar (quit if running, then relaunch — use `;` so relaunch still
+# happens when xbar isn't running yet)
+osascript -e 'tell application "xbar" to quit' 2>/dev/null; open -a xbar
 
 
 echo "Timr installation complete."
