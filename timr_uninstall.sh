@@ -9,10 +9,12 @@ fi
 # remove all timr files
 launchctl unload ~/Library/LaunchAgents/com.timr.login.plist
 launchctl unload ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
- 
+launchctl unload ~/Library/LaunchAgents/com.timr.shutdown.plist 2>/dev/null
+
 rm -f ~/Library/Application\ Support/xbar/plugins/timr.30s.sh
 rm -f ~/Library/LaunchAgents/com.timr.login.plist
 rm -f ~/Library/LaunchAgents/com.timr.sleepwatcher.plist
+rm -f ~/Library/LaunchAgents/com.timr.shutdown.plist
 rm -rf ~/Library/Logs/timr
 rm -rf ~/Library/Scripts/timr
 
