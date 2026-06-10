@@ -13,7 +13,7 @@ The installer generates and deploys several independent pieces that together for
    - `com.timr.login.plist` — runs `timr-start.sh login` at load (boot/login).
    - `com.timr.sleepwatcher.plist` — invokes Homebrew's `sleepwatcher` with `-s "timr-stop.sh sleep"` and `-w "timr-start.sh wake"`. sleepwatcher passes these strings through `/bin/sh`, so space-separated args work. sleepwatcher does **not** fire its `-s` script on its own termination, so there's no double-stop conflict with the shutdown watcher.
    - `com.timr.shutdown.plist` — runs `timr-shutdown-watch.sh` with `RunAtLoad` + `KeepAlive`. launchd sends SIGTERM to all agents on logout/shutdown; this one's trap catches it and records the stop.
-5. **`~/Library/Application Support/xbar/plugins/timr.30s.sh`** — xbar plugin refreshed every 30s. Reads `developer.log`, adds the in-flight session from `/tmp/timr-last.txt`, computes day/week remaining against `HOURS` / `DAYS` targets from the Timr config file, and emits xbar menu output. Also owns all in-menu settings (hour/day presets, pause/resume) via xbar action handlers — the plugin re-invokes itself with `$1` set to an action name, handles the action, and `exit 0`s before rendering. Week is determined by `date +%W` (Monday-based week number).
+5. **`~/Library/Application Support/xbar/plugins/timr.30s.sh`** — xbar plugin refreshed every 30s. Reads `developer.log`, adds the in-flight session from `/tmp/timr-last.txt`, computes day/week remaining against `HOURS_PER_DAY` / `DAYS` targets from the Timr config file (weekly target = `HOURS_PER_DAY × DAYS`), and emits xbar menu output. Also owns all in-menu settings (hour/day presets, pause/resume) via xbar action handlers — the plugin re-invokes itself with `$1` set to an action name, handles the action, and `exit 0`s before rendering. Week is determined by `date +%W` (Monday-based week number).
 
 ### Event coverage
 
@@ -34,7 +34,7 @@ Everything Timr mutates at runtime lives in one of two places:
 
 - `/tmp/timr-last.txt` — in-flight marker. Presence means a session is open; its contents are the session start timestamp. Cleared by macOS on reboot.
 - `~/Library/Application Support/timr/` — persistent state and config, owned by the xbar plugin:
-  - `config` — `HOURS=<n>` / `DAYS=<n>` KEY=VALUE lines, written by the Settings action handlers. Read defensively (no `source`) on each plugin refresh, which is why in-menu config changes take effect instantly. **Do not reintroduce xbar's `vars.json` system here** — xbar caches it in memory and only re-reads it when its own preferences UI writes, which breaks the dropdown-settings flow.
+  - `config` — `HOURS_PER_DAY=<n>` / `DAYS=<n>` KEY=VALUE lines, written by the Settings action handlers. Read defensively (no `source`) on each plugin refresh, which is why in-menu config changes take effect instantly. **Do not reintroduce xbar's `vars.json` system here** — xbar caches it in memory and only re-reads it when its own preferences UI writes, which breaks the dropdown-settings flow.
   - `paused` — pause flag. Presence means manual pause is active. Its mtime is the moment pause was activated (used to compute paused duration for the resume prompt).
   - `last-prompt` — rate-limit marker. Its mtime is the last time the resume prompt was shown; the plugin won't re-prompt within 5 minutes of it.
 

@@ -326,7 +326,7 @@ cat << 'EOF' > ~/Library/Application\ Support/xbar/plugins/timr.30s.sh
 # Shows day and weekly times
 #
 # <xbar.title>Timr</xbar.title>
-# <xbar.desc>Automatic time tracking for macOS. Configure your weekly hour target and number of work days from the Timr dropdown menu.</xbar.desc>
+# <xbar.desc>Automatic time tracking for macOS. Configure your daily hour target and number of work days from the Timr dropdown menu.</xbar.desc>
 
 # ----------------------------
 # Config
@@ -348,7 +348,7 @@ STOP_SCRIPT="$HOME/Library/Scripts/timr/timr-stop.sh"
 mkdir -p "$CONFIG_DIR"
 
 # Defaults (used on first run or if a key is missing from the config file)
-HOURS=35
+HOURS_PER_DAY=7
 DAYS=5
 
 # Read config if present. Parsed defensively rather than `source`d so a
@@ -356,8 +356,8 @@ DAYS=5
 if [ -f "$CONFIG_FILE" ]; then
     while IFS='=' read -r key value; do
         case "$key" in
-            HOURS) HOURS="$value" ;;
-            DAYS)  DAYS="$value" ;;
+            HOURS_PER_DAY) HOURS_PER_DAY="$value" ;;
+            DAYS)          DAYS="$value" ;;
         esac
     done < "$CONFIG_FILE"
 fi
@@ -371,8 +371,8 @@ fi
 # plugin afterwards, and the next read picks up the new values.
 
 is_positive_number() {
-    # Accept integer or decimal, must parse as > 0. Used for HOURS, where
-    # values like 37.5 are legitimate.
+    # Accept integer or decimal, must parse as > 0. Used for HOURS_PER_DAY,
+    # where values like 7.5 are legitimate.
     [[ "$1" =~ ^[0-9]+(\.[0-9]+)?$ ]] || return 1
     awk -v v="$1" 'BEGIN { exit !(v > 0) }'
 }
@@ -385,7 +385,7 @@ is_positive_integer() {
 }
 
 write_config() {
-    printf 'HOURS=%s\nDAYS=%s\n' "$1" "$2" > "$CONFIG_FILE"
+    printf 'HOURS_PER_DAY=%s\nDAYS=%s\n' "$1" "$2" > "$CONFIG_FILE"
 }
 
 prompt_number() {
@@ -411,22 +411,22 @@ do_resume() {
 }
 
 case "$1" in
-    set-hours)
+    set-hours-per-day)
         is_positive_number "$2" && write_config "$2" "$DAYS"
         exit 0
         ;;
-    set-hours-custom)
-        new=$(prompt_number "Weekly hour target:" "$HOURS")
+    set-hours-per-day-custom)
+        new=$(prompt_number "Daily hour target:" "$HOURS_PER_DAY")
         [ -n "$new" ] && is_positive_number "$new" && write_config "$new" "$DAYS"
         exit 0
         ;;
     set-days)
-        is_positive_integer "$2" && write_config "$HOURS" "$2"
+        is_positive_integer "$2" && write_config "$HOURS_PER_DAY" "$2"
         exit 0
         ;;
     set-days-custom)
         new=$(prompt_number "Work days per week (whole number):" "$DAYS")
-        [ -n "$new" ] && is_positive_integer "$new" && write_config "$HOURS" "$new"
+        [ -n "$new" ] && is_positive_integer "$new" && write_config "$HOURS_PER_DAY" "$new"
         exit 0
         ;;
     pause)
@@ -519,16 +519,18 @@ if [ -f "$TEMP_FILE" ]; then
     WEEK_SECONDS=$((WEEK_SECONDS + NOW_EPOCH - LOGIN_EPOCH))
 fi
 
-# Safety fallbacks. HOURS may be decimal; DAYS must be a positive integer
-# because bash integer arithmetic (used below) can't divide by a decimal.
-# If a stale/tampered config produces a non-integer DAYS, fall back to 5
-# rather than erroring out at render time.
-[ -z "$HOURS" ] && HOURS=35
+# Safety fallbacks. HOURS_PER_DAY may be decimal; DAYS must be a positive
+# integer because the dot rendering loop and the days-completed clamp are
+# integer-only. If a stale/tampered config produces a non-integer DAYS,
+# fall back to 5 rather than erroring out at render time.
+[ -z "$HOURS_PER_DAY" ] && HOURS_PER_DAY=7
 [[ "$DAYS" =~ ^[0-9]+$ ]] && [ "$DAYS" -gt 0 ] || DAYS=5
 
-# HOURS may be decimal (e.g. 37.5), so use awk instead of bash arithmetic
-# which is integer-only. Result is truncated to whole seconds.
-TOTAL_WEEK_SECONDS=$(awk -v h="$HOURS" 'BEGIN { printf "%d", h * 3600 }')
+# HOURS_PER_DAY may be decimal (e.g. 7.5), so use awk instead of bash
+# arithmetic which is integer-only. Result is truncated to whole seconds.
+# Weekly target is derived from daily target × work days.
+TOTAL_DAY_SECONDS=$(awk -v h="$HOURS_PER_DAY" 'BEGIN { printf "%d", h * 3600 }')
+TOTAL_WEEK_SECONDS=$((TOTAL_DAY_SECONDS * DAYS))
 REMAINING_WEEK_SECONDS=$((TOTAL_WEEK_SECONDS - WEEK_SECONDS))
 rwh=$((REMAINING_WEEK_SECONDS/3600))
 rwm=$(((REMAINING_WEEK_SECONDS%3600)/60))
@@ -544,8 +546,6 @@ else
     WEEK_OUTPUT="Week remaining: $WEEK_REMAIN"
 fi
 
-# calculate a day remain value based on TOTAL_WEEK_SECONDS/DAYS
-TOTAL_DAY_SECONDS=$((TOTAL_WEEK_SECONDS/DAYS))
 REMAINING_DAY_SECONDS=$((TOTAL_DAY_SECONDS - TODAY_SECONDS))
 rdh=$((REMAINING_DAY_SECONDS/3600))
 rdm=$(((REMAINING_DAY_SECONDS%3600)/60))
@@ -600,17 +600,17 @@ else
 fi
 echo "---"
 echo "Settings"
-# Weekly hour target submenu. Each preset re-invokes this plugin with
-# `set-hours <value>` and triggers a refresh so the new target takes effect
-# on the spot.
-printf -- "--Weekly hours: %sh\n" "$HOURS"
-for preset in 20 25 30 35 37.5 40; do
+# Hours-per-day target submenu. Each preset re-invokes this plugin with
+# `set-hours-per-day <value>` and triggers a refresh so the new target
+# takes effect on the spot.
+printf -- "--Hours per day: %sh\n" "$HOURS_PER_DAY"
+for preset in 6 7 7.5 8 9 10; do
     marker=" "
-    [ "$preset" = "$HOURS" ] && marker="✓"
-    printf -- "----%s %sh | bash=\"%s\" param1=set-hours param2=%s terminal=false refresh=true\n" \
+    [ "$preset" = "$HOURS_PER_DAY" ] && marker="✓"
+    printf -- "----%s %sh | bash=\"%s\" param1=set-hours-per-day param2=%s terminal=false refresh=true\n" \
         "$marker" "$preset" "$0" "$preset"
 done
-printf -- "----Custom... | bash=\"%s\" param1=set-hours-custom terminal=false refresh=true\n" "$0"
+printf -- "----Custom... | bash=\"%s\" param1=set-hours-per-day-custom terminal=false refresh=true\n" "$0"
 # Days per week submenu.
 printf -- "--Days per week: %s\n" "$DAYS"
 for preset in 4 5 6; do
