@@ -613,7 +613,7 @@ done
 printf -- "----Custom... | bash=\"%s\" param1=set-hours-per-day-custom terminal=false refresh=true\n" "$0"
 # Days per week submenu.
 printf -- "--Days per week: %s\n" "$DAYS"
-for preset in 4 5 6; do
+for preset in 2 3 4 5; do
     marker=" "
     [ "$preset" = "$DAYS" ] && marker="✓"
     printf -- "----%s %s | bash=\"%s\" param1=set-days param2=%s terminal=false refresh=true\n" \
